@@ -401,7 +401,7 @@ def lineupShot(agent,multi):
     targetVec.data[2] = 75
 
     shotAngles = [math.degrees(angle2(targetVec,leftPost))*sign(agent.team),math.degrees(angle2(targetVec,center))*sign(agent.team),math.degrees(angle2(targetVec,rightPost))*sign(agent.team)]
-    correctedAngles = [x-90 for x in shotAngles]
+    correctedAngles = [(x-90)*-sign(agent.team) for x in shotAngles]
 
     if correctedAngles[1] > variance:
         goalAngle = correctedAngles[0]
