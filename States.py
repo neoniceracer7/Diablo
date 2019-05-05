@@ -43,9 +43,10 @@ class JumpingState(baseState):
                 #print("How can I flip towards a ball when you don't tell me where it is?!?!?!")
                 ball_local = toLocal(self.agent.ball.location, self.agent.me)
                 ball_angle = math.atan2(ball_local.data[1], ball_local.data[0])
+                #print(ball_angle,math.cos(ball_angle))
                 controller_state.jump = True
                 controller_state.yaw = math.sin(ball_angle)
-                controller_state.pitch = -abs(math.cos(ball_angle))
+                controller_state.pitch = -math.cos(ball_angle) #-abs(math.cos(ball_angle))
 
         controller_state.jump = jump
         controller_state.boost = False
@@ -129,7 +130,7 @@ class Kickoff(baseState):
         self.agent = agent
         self.started = False
         self.firstFlip = False
-        self.finalFlipDistance = 700
+        self.finalFlipDistance = 800
         self.active = True
         self.startTime = time.time()
         self.flipState = None
