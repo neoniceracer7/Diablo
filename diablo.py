@@ -4,6 +4,7 @@ from rlbot.agents.base_agent import BaseAgent, SimpleControllerState
 from rlbot.utils.structures.game_data_struct import GameTickPacket
 from rlbot.utils.game_state_util import GameState, BallState, CarState, Physics, Vector3 as vector3, Rotator
 import time
+import math
 
 class diabloBot(BaseAgent):
 
@@ -36,6 +37,48 @@ class diabloBot(BaseAgent):
         self.ballDelay = 0
         self.renderCalls = []
         self.ballPredObj = None
+        self.carHeight = 84
+        self.forward = True
+        self.velAngle = 0
+        self.onWall = False
+
+    def getActiveState(self):
+        if type(self.activeState) == JumpingState:
+            return 0
+        if type(self.activeState) == Kickoff:
+            return 1
+        if type(self.activeState) == GetBoost:
+            return 2
+        if type(self.activeState) == Dribble:
+            return 3
+        if type(self.activeState) == GroundShot:
+            return 4
+        if type(self.activeState) == GroundDefend:
+            return 5
+        if type(self.activeState) == halfFlip:
+            return 6
+
+    def setHalfFlip(self):
+        self.activeState = halfFlip(self)
+
+    def determineFacing(self):
+        offset = self.me.location + self.me.velocity
+        #direction = self.me.location + offset
+        loc = toLocal(offset,self.me)
+        angle = math.degrees(math.atan2(loc[1],loc[0]))
+        if angle < -180:
+            angle += 360
+        if angle > 180:
+            angle -= 360
+
+        if abs(angle) >150 and self.getCurrentSpd() > 200:
+            self.forward = False
+        else:
+            self.forward = True
+
+        self.velAngle = angle
+        #print(self.forward, angle)
+
 
     def getAvgDelta(self):
         if len(self.deltaList) > 0:
@@ -105,7 +148,12 @@ class diabloBot(BaseAgent):
         self.ball.avelocity = Vector([ball.angular_velocity.x, ball.angular_velocity.y, ball.angular_velocity.z])
         self.me.matrix = rotator_to_matrix(self.me)
         self.ball.local_location = localizeVector(self.ball.location,self.me)
-        #print(self.ball.local_location)
+        self.determineFacing()
+        self.onWall = False
+        if self.onSurface:
+            if self.me.location[2] > 40:
+                self.onWall = True
+
 
         # collects info for all other cars in match, updates objects in self.players accordingly
         self.allies.clear()
@@ -139,11 +187,19 @@ class diabloBot(BaseAgent):
             fieldInfoBoost = self.fieldInfo.boost_pads[index]
             self.boosts.append(Boost_obj([fieldInfoBoost.location.x,fieldInfoBoost.location.y,fieldInfoBoost.location.z],fieldInfoBoost.is_full_boost, packetBoost.is_active))
 
-        #print(self.getCurrentSpd())
+
+
+
 
     def get_output(self, packet: GameTickPacket) -> SimpleControllerState:
         self.preprocess(packet)
-        stateManager(self)
+        #stateManager(self)
+        #simpleStateManager(self)
+        #halfFlipStateManager(self)
+        if len(self.allies) >=1:
+            teamStateManager(self)
+        else:
+            soloStateManager(self)
         action = self.activeState.update()
 
         self.renderer.begin_rendering()
