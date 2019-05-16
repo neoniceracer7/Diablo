@@ -71,7 +71,7 @@ class diabloBot(BaseAgent):
         if angle > 180:
             angle -= 360
 
-        if abs(angle) >150 and self.getCurrentSpd() > 200:
+        if abs(angle) >150 and self.getCurrentSpd() > 75:
             self.forward = False
         else:
             self.forward = True
@@ -151,7 +151,7 @@ class diabloBot(BaseAgent):
         self.determineFacing()
         self.onWall = False
         if self.onSurface:
-            if self.me.location[2] > 40:
+            if self.me.location[2] > 70:
                 self.onWall = True
 
 

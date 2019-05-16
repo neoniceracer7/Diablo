@@ -268,14 +268,10 @@ def steer(angle):
     return clamp(1,-1,final)
 
 def newSteer(angle):
-    if angle < -180:
-        angle += 360
-    if angle > 180:
-        angle -= 360
     turn = Gsteer(angle)
     slide = False
 
-    if abs(math.degrees(angle)) >=80:
+    if abs(math.degrees(angle)) >=85:
         slide = True
 
     return (turn,slide)
@@ -387,17 +383,25 @@ def determineVelocityToGoal(agent):
 
 def backmanDefense(agent):
     center = Vector([0, 4700 * sign(agent.team), 200])
+    distance = distance2D(center,agent.ball.location)
 
-    if distance2D(center,agent.ball.location) < 3500:
+    if distance < 3500:
         return turtleTime(agent)
     else:
-        if agent.me.boostLevel < 50:
-            return saferBoostGrabber(agent)
+
+        if distance >= 5000:
+            if agent.me.boostLevel < 50:
+                return saferBoostGrabber(agent)
+            else:
+                if distance2D(agent.me.location,center) > 600:
+                    return efficientMover(agent, center, 2200)
+                else:
+                    return efficientMover(agent,center,500)
         else:
-            if distance2D(agent.me.location,center) > 600:
+            if distance2D(agent.me.location, center) > 600:
                 return efficientMover(agent, center, 2200)
             else:
-                return efficientMover(agent,center,500)
+                return efficientMover(agent, center, 400)
 
 
 def secondManSupport(agent):
@@ -409,7 +413,7 @@ def secondManSupport(agent):
             x = -250
         else:
             x = 250
-        return efficientMover(agent,Vector([x,agent.ball.location[1]*.7,100]),2200)
+        return efficientMover(agent,Vector([x,agent.ball.location[1],100]),2200)
 
 
 def noOwnGoalDefense(agent):
@@ -417,7 +421,7 @@ def noOwnGoalDefense(agent):
     rightCorner = Vector([sign(agent.team) * 4096, 5000 * sign(agent.team), 200])
     leftPost = Vector([-sign(agent.team) * 800, 5000 * sign(agent.team), 200])
     rightPost = Vector([sign(agent.team) * 800, 5000 * sign(agent.team), 200])
-    center = Vector([0, 5000 * sign(agent.team), 200])
+    center = Vector([0, 5200 * sign(agent.team), 200])
 
     ballGoalDist = distance2D(agent.ball.location, center)
     carGoalDist = distance2D(agent.me.location, center)
@@ -425,10 +429,8 @@ def noOwnGoalDefense(agent):
     if carGoalDist < ballGoalDist:
         return (center, False)
 
-    if ballGoalDist > 6000:
-        #print(ballGoalDist)
-        return (center,True)
-
+    if ballGoalDist < 600:
+        return (center, False)
 
     ballToLeft = distance1D(leftCorner,agent.ball.location,0)
     ballToRight = distance1D(rightCorner,agent.ball.location,0)
@@ -444,10 +446,7 @@ def noOwnGoalDefense(agent):
         return (rightPost, True)
 
 
-
-
-
-    return (center, True)
+    return (rightPost, True)
 
 
 
@@ -510,12 +509,21 @@ def prepareShot(agent):
     rightPost = Vector([sign(agent.team) * 700, 5100 * -sign(agent.team), 200])
     center = Vector([0, 5150 * -sign(agent.team), 200])
 
+def goalWallFixer(agent):
+    myGoal = Vector([0, 5120 * sign(agent.team), 0])
+    jump = False
+    if abs(agent.me.location[0]) < 893:
+        if abs(agent.me.location[1]) > 5120:
+            if agent.onWall:
+                jump = True
+    return jump
+
 
 def flipDecider(agent,enemyInfluenced=False):
     if not enemyInfluenced:
-        if not agent.onWall:
-            if findDistance(agent.me.location,agent.ball.location) < 250:
-                agent.setJumping(0)
+        # if not agent.onWall:
+        if findDistance(agent.me.location,agent.ball.location) < 250:
+            agent.setJumping(0)
 
     else:
         if findDistance(agent.me.location, agent.ball.location) < 250:
@@ -843,71 +851,10 @@ def testMover(agent, target_object,targetSpd):
                     controller_state.throttle = -1
                 else:
                     controller_state.throttle = 1
+    controller_state.jump = goalWallFixer(agent)
 
     return controller_state
 
-
-# def testMover(agent, target_object,targetSpd):
-#     if targetSpd > 2200:
-#         targetSpd = 2200
-#     currentSpd = agent.getCurrentSpd()
-#     if targetSpd < currentSpd+150 or agent.me.boostLevel <=0:
-#         return efficientMover(agent,target_object,targetSpd)
-#
-#     location = toLocal(target_object, agent.me)
-#     controller_state = SimpleControllerState()
-#     angle_to_target = math.atan2(location.data[1], location.data[0])
-#     #_distance = distance2D(agent.me, target_object)
-#     _distance = distance2D(agent.me, target_object)
-#     #print(math.degrees(angle_to_target))
-#
-#     current_vel = getVelocity(agent.me.velocity)
-#     steering, slide = newSteer(angle_to_target)
-#     #steering, slide = slideSteer(angle_to_target,_distance)
-#
-#     controller_state.steer = steering
-#     controller_state.handbrake = slide
-#     controller_state.throttle = 1.0
-#
-#     if targetSpd >=2200:
-#         maxSpeed = 2200
-#         if _distance < 800:
-#             maxSpeed-= (abs(steering*.5))*maxSpeed
-#
-#         #throttle
-#         if maxSpeed > current_vel:
-#             controller_state.throttle = 1.0
-#             if agent.onSurface and not slide:
-#                 if maxSpeed > 1400 and current_vel < 2200:
-#                     if agent.onSurface:
-#                         controller_state.boost = True
-#         elif maxSpeed < current_vel:
-#             if agent.getActiveState() != 3:
-#                 controller_state.throttle = -1
-#             else:
-#                 if current_vel - maxSpeed < 5:
-#                     controller_state.throttle = 0
-#                 else:
-#                     controller_state.throttle = -1
-#
-#     else:
-#         if currentSpd < targetSpd:
-#             controller_state.throttle = 1.0
-#             if not slide:
-#                 if (targetSpd-currentSpd) > 50:
-#                     if agent.onSurface:
-#                         controller_state.boost = True
-#
-#         elif currentSpd > targetSpd:
-#             if agent.getActiveState() != 3:
-#                 controller_state.throttle = -1
-#             else:
-#                 if currentSpd - targetSpd < 25:
-#                     controller_state.throttle = 0
-#                 else:
-#                     controller_state.throttle = -1
-#
-#     return controller_state
 
 def timeDelayedMovement(agent,targetVec,delay):
     dist = distance2D(agent.me.location,targetVec)
@@ -949,25 +896,31 @@ def efficientMover(agent,target_object,target_speed):
     controller_state = SimpleControllerState()
     location = toLocal(target_object, agent.me)
     angle_to_target = math.atan2(location.data[1], location.data[0])
-    #_distance = distance2D(agent.me, target_object)
     _distance = distance2D(agent.me, target_object)
     current_speed = getVelocity(agent.me.velocity)
-    steerDirection, slideBool = newSteer(angle_to_target)
-    controller_state.steer = steerDirection
-    controller_state.handbrake = slideBool
+
 
 
     if not agent.forward:
+        _angle = math.degrees(angle_to_target)
+        _angle -= 180
+        if _angle < -180:
+            _angle += 360
+        if _angle > 180:
+            _angle -= 360
+
+        angle_to_target = math.radians(_angle)
         if agent.onSurface:
             if _distance > 800:
-                _angle = math.degrees(angle_to_target)
-                if _angle < -180:
-                    _angle += 360
-                if _angle > 180:
-                    _angle -= 360
-
-                if abs(_angle) > 120:
+                if abs(_angle) <= 50 :
                     agent.setHalfFlip()
+
+    steerDirection, slideBool = newSteer(angle_to_target)
+    if not agent.forward:
+        steerDirection = -steerDirection
+    controller_state.steer = steerDirection
+    controller_state.handbrake = slideBool
+
     if abs(steerDirection) >=.95:
         optimalSpd = maxSpeedAdjustment(agent, target_object)
 
@@ -1014,6 +967,8 @@ def efficientMover(agent,target_object,target_speed):
                         controller_state.throttle = -1
                     else:
                         controller_state.throttle = 1
+
+    controller_state.jump = goalWallFixer(agent)
 
     return controller_state
 

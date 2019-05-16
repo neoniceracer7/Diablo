@@ -503,9 +503,14 @@ def teamStateManager(agent):
                             agent.activeState = backMan(agent)
                         return
                     else:
-                        if agent.activeState != secondMan:
-                            agent.activeState = secondMan(agent)
-                        return
+                        if ballDistanceFromGoal >= 5000:
+                            if agentType != gettingPhysical:
+                                agent.activeState = gettingPhysical(agent)
+                            return
+                        else:
+                            if agentType != backMan:
+                                agent.activeState = backMan(agent)
+                            return
 
         else:
             agent.activeState = Kickoff(agent)
