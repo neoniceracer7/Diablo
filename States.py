@@ -9,6 +9,7 @@ class baseState:
         #generic useful objects
         self.agent = agent
         self.active = True
+        self.agent.stateTimer = time.time()
 
 class State:
     RESET = 0
@@ -18,10 +19,195 @@ class State:
 
 
 
-
 class GetBoost(baseState):
     def update(self):
         return saferBoostGrabber(self.agent)
+
+
+class airLaunch(baseState):
+    def __init__(self,agent):
+        baseState.__init__(self,agent)
+        self.initiated = time.time()
+        self.jumpTimer = time.time()
+        self.firstJump = False
+        self.secondJump = False
+        self.firstJumpHold = 0.5
+        self.secondJumpHold = 0.4
+
+
+    def update(self):
+        stateController = SimpleControllerState()
+
+        if not self.firstJump:
+            self.firstJump = True
+            stateController.jump = True
+            self.jumpTimer = time.time()
+
+        elif self.firstJump and not self.secondJump:
+            if time.time() - self.jumpTimer < self.firstJumpHold:
+                stateController.jump = True
+
+            elif time.time() - self.jumpTimer > self.firstJumpHold and time.time() - self.jumpTimer < self.firstJumpHold +.05:
+                stateController.boost = True
+                stateController.jump = False
+
+            else:
+                self.secondJump = True
+                stateController.boost = True
+                self.jumpTimer = time.time()
+
+        else:
+            if time.time() - self.jumpTimer < self.secondJumpHold:
+                stateController.jump = True
+                stateController.boost = True
+
+            else:
+                self.active = False
+                self.jump = False
+                self.agent.activeState = aerialATBA(self.agent)
+
+        if time.time() - self.jumpTimer > 0.15:
+
+            pitchAngle = math.degrees(self.agent.me.rotation[1])
+            y_vel = self.agent.me.avelocity[1]
+            pitch = 0
+            if pitchAngle > 50:
+                if y_vel > -.4:
+                    pitch = clamp(1,-1,-1 + abs(y_vel))
+            elif pitchAngle < 50:
+                if y_vel < .4:
+                    pitch = clamp(1,-1,1 - abs(y_vel))
+
+            #print(pitchAngle)
+
+            if y_vel > 1:
+                pitch = -1
+            elif y_vel < -1:
+                pitch = 1
+
+            stateController.pitch = pitch
+        return stateController
+
+
+class aerialATBA(baseState):
+    def __init__(self,agent):
+        baseState.__init__(self,agent)
+        self.max_Avel = .4
+
+    def update(self):
+        stateController = SimpleControllerState()
+        stateController.throttle = 1
+        stateController.boost = True
+
+        if self.agent.onSurface:
+            self.active = False
+            stateController.throttle = 0
+            stateController.boost = False
+
+        location = toLocal(self.agent.ball.location, self.agent.me)
+        #direction = (location - self.agent.me.location).normalize()
+        direction = (self.agent.ball.location - self.agent.me.location).normalize()
+        angle = math.atan2(location[1],location[0])
+
+        #print(direction)
+        if angle > 1:
+            yaw = -1
+        else:
+            yaw = 1
+
+        #stateController.yaw = self.changeYaw(-angle)
+        #stateController.pitch = pitch
+        #print(self.agent.me.rotation[1])
+        #stateController.roll = self.changeRoll(self.agent.me.rotation[0])
+
+        return stateController
+
+
+    # def changeYaw(self,rawYaw):
+    #     z_vel = self.agent.me.avelocity[2]
+    #     yaw = 0
+    #     if rawYaw > 0:
+    #         if z_vel < self.max_Avel:
+    #             yaw = rawYaw
+    #
+    #     elif rawYaw < 0:
+    #         if z_vel > - self.max_Avel:
+    #             yaw = rawYaw
+    #
+    #     if z_vel >= 1:
+    #         yaw = -1
+    #
+    #     elif z_vel < -1:
+    #         yaw = 1
+    #
+    #
+    #     return yaw
+    def changeYaw(self,target):
+        yawAngle = self.agent.me.rotation[2]
+        z_vel = self.agent.me.avelocity[2]
+        yaw = 0
+        if yawAngle > target:
+            if z_vel > -self.max_Avel:
+                yaw = 1
+        elif yawAngle < target:
+            if z_vel < self.max_Avel:
+                yaw = -1
+
+        if z_vel > .5:
+            return -1
+        elif z_vel < -.5:
+            return 1
+
+        return yaw
+
+    def changePitch(self,target):
+        pitchAngle = math.degrees(self.agent.me.rotation[1])
+        y_vel = self.agent.me.avelocity[1]
+        pitch = 0
+        if pitchAngle > target:
+            if y_vel > -self.max_Avel:
+                pitch = clamp(1, -1, -1 + abs(y_vel))
+        elif pitchAngle < target:
+            if y_vel < self.max_Avel:
+                pitch = clamp(1, -1, 1 - abs(y_vel))
+
+        if y_vel > 1:
+            pitch = -1
+        elif y_vel < -1:
+            pitch = 1
+        return pitch
+
+    # def changePitch(self,target):
+    #     pitchAngle = math.degrees(self.agent.me.rotation[1])
+    #     y_vel = self.agent.me.avelocity[1]
+    #     target = math.degrees(target)
+    #     if abs(alternativeAngle(pitchAngle) - target) < abs(pitchAngle - target):
+    #         target = alternativeAngle(target)
+    #     print(target,pitchAngle)
+    #     pitch = 0
+    #     if pitchAngle > target:
+    #         if y_vel > -self.max_Avel:
+    #             pitch = clamp(1,-1,-1 - y_vel)
+    #             #pitch = -1
+    #     elif pitchAngle < target:
+    #         if y_vel < self.max_Avel:
+    #             pitch = clamp(1, -1, 1 - y_vel)
+    #             #pitch = 1
+    #
+    #     return pitch
+
+    def changeRoll(self,current):
+        x_vel = self.agent.me.avelocity[0]
+        roll = 0
+        if current > 0:
+            if x_vel > -self.max_Avel:
+                roll = -1
+        elif current < 0:
+            if x_vel < self.max_Avel:
+                roll = 1
+
+        return roll
+
 
 
 class JumpingState(baseState):
@@ -30,6 +216,7 @@ class JumpingState(baseState):
         self.active = True
         self.targetCode = targetCode
         self.flip_obj = FlipStatus()
+        self.agent.stateTimer = time.time()
 
     def update(self):
         controller_state = SimpleControllerState()
@@ -38,6 +225,7 @@ class JumpingState(baseState):
             if self.targetCode == 1:
                 controller_state.pitch = -1
                 controller_state.steer = 0
+                controller_state.throttle = 1
 
             elif self.targetCode == 0:
                 #print("How can I flip towards a ball when you don't tell me where it is?!?!?!")
@@ -46,7 +234,13 @@ class JumpingState(baseState):
                 #print(ball_angle,math.cos(ball_angle))
                 controller_state.jump = True
                 controller_state.yaw = math.sin(ball_angle)
-                controller_state.pitch = -math.cos(ball_angle) #-abs(math.cos(ball_angle))
+                pitch = -math.cos(ball_angle) #-abs(math.cos(ball_angle))
+                controller_state.pitch = pitch
+                if pitch > 0:
+                    controller_state.throttle = -1
+                else:
+                    controller_state.throttle = 1
+
             elif self.targetCode == 2:
                 controller_state.pitch = 0
                 controller_state.steer = 0
@@ -54,10 +248,11 @@ class JumpingState(baseState):
             if self.targetCode == 3:
                 controller_state.pitch = 1
                 controller_state.steer = 0
+                controller_state.throttle = -1
 
         controller_state.jump = jump
         controller_state.boost = False
-        controller_state.throttle = 1
+        #controller_state.throttle = 1
         if self.flip_obj.flipDone:
             self.active = False
 
@@ -78,6 +273,7 @@ class GroundShot(baseState):
     def __init__(self, agent):
         self.agent = agent
         self.active = True
+        self.agent.stateTimer = time.time()
 
     def update(self):
         return lineupShot(self.agent,3)
@@ -88,6 +284,7 @@ class Dribble(baseState):
         #generic useful objects
         self.agent = agent
         self.active = True
+        self.agent.stateTimer = time.time()
 
     def update(self):
         if not kickOffTest(self.agent):
@@ -140,6 +337,7 @@ class Kickoff(baseState):
         self.active = True
         self.startTime = time.time()
         self.flipState = None
+        self.agent.stateTimer = time.time()
 
     def retire(self):
         self.active = False
@@ -202,20 +400,16 @@ class aerialRecovery(baseState):
         elif self.agent.me.rotation[2] < 0:
             controller_state.roll = 1
 
-        # if self.agent.me.rotation[0] > self.agent.me.velocity[0]:
-        #     controller_state.yaw = -1
-        #
-        # elif self.agent.me.rotation[0] < self.agent.me.velocity[0]:
-        #     controller_state.yaw = 1
-
         if self.agent.me.rotation[0] > self.agent.velAngle:
             controller_state.yaw = -1
 
         elif self.agent.me.rotation[0] < self.agent.velAngle:
             controller_state.yaw = 1
 
-
-        controller_state.throttle = 1
+        if self.active:
+            controller_state.throttle = 1
+        else:
+            controller_state.throttle = 0
 
         return controller_state
 
@@ -229,6 +423,7 @@ class halfFlip(baseState):
         self.secondJump = False
         self.jumpStart = 0
         self.timeCreated = time.time()
+        self.agent.stateTimer = time.time()
         #print("half flipping!!!")
 
 
@@ -281,6 +476,7 @@ class Chase(baseState):
     def __init__(self, agent):
         self.agent = agent
         self.active = True
+        self.agent.stateTimer = time.time()
 
     def update(self):
         if not kickOffTest(self.agent):
@@ -377,9 +573,9 @@ def simpleStateManager(agent):
                 if agentType != GroundDefend:
                     agent.activeState = GroundDefend(agent)
 
-            elif goalward:
-                if agentType != GroundDefend:
-                    agent.activeState = GroundDefend(agent)
+            # elif goalward:
+            #     if agentType != GroundDefend:
+            #         agent.activeState = GroundDefend(agent)
 
 
             else:
@@ -466,54 +662,112 @@ def teamStateManager(agent):
                 soloStateManager(agent)
                 return
 
-            elif len(agent.allies) == 1:
-                if carDistanceFromBall< cardistancesFromBall[0]:
-                    if agentType != Dribble:
-                        agent.activeState = Dribble(agent)
+            if agent.activeState != None:
+                if agent.activeState.active and (time.time() - agent.stateTimer) < 1:
                     return
+                else:
+                    print("new state",(time.time() - agent.stateTimer),time.time())
+
+            if len(agent.allies) == 1:
+                if carDistanceFromBall< cardistancesFromBall[0]:
+                    if carDistanceFromGoal < ballDistanceFromGoal:
+                        if agentType != Dribble:
+                            agent.activeState = Dribble(agent)
+                        else:
+                            agent.stateTimer = time.time()
+                        return
+                    else:
+                        if ballDistanceFromGoal <= 6500:
+                            if agent.activeState != backMan:
+                                agent.activeState = backMan(agent)
+                            else:
+                                agent.stateTimer = time.time()
+                            return
+                        else:
+                            agent.activeState = secondMan(agent)
 
                 else:
-                    # if ballDistanceFromGoal >7000:
-                    #     if agentType != gettingPhysical:
-                    #         agent.activeState = gettingPhysical(agent)
-                    #     return
-                    # else:
-                    if agentType != backMan:
-                        agent.activeState = backMan(agent)
-                    return
+                    if ballDistanceFromGoal >=6500:
+                        if agentType != secondMan:
+                            agent.activeState = secondMan(agent)
+                        else:
+                            agent.stateTimer = time.time()
+                        return
+                    else:
+                        if agentType != backMan:
+                            agent.activeState = backMan(agent)
+                        else:
+                            agent.stateTimer = time.time()
+                        return
 
             else:
                 if carDistanceFromBall < min(cardistancesFromBall):
-                    if agentType != Dribble:
-                        agent.activeState = Dribble(agent)
-                    return
+                    if carDistanceFromGoal < ballDistanceFromGoal:
+                        if agentType != Dribble:
+                            agent.activeState = Dribble(agent)
+                        else:
+                            agent.stateTimer = time.time()
+                        return
+                    else:
+                        if agent.activeState != backMan:
+                            agent.activeState = backMan(agent)
+                        else:
+                            agent.stateTimer = time.time()
+                        return
 
-                # if ballDistanceFromGoal > 6500:
-                #     if carDistanceFromGoal > min(carDistancesFromGoal):
-                #         if agentType != gettingPhysical:
-                #             agent.activeState = gettingPhysical(agent)
-                #         return
-                #     else:
-                #         if agentType != secondMan:
-                #             agent.activeState = secondMan(agent)
+                if ballDistanceFromGoal >= 6500:
+                    if carDistanceFromGoal > min(carDistancesFromGoal):
+                        if agentType != gettingPhysical:
+                            agent.activeState = gettingPhysical(agent)
+                        else:
+                            agent.stateTimer = time.time()
+                        return
+                    else:
+                        if agent.activeState != secondMan:
+                            agent.activeState = secondMan(agent)
+                        else:
+                            agent.stateTimer = time.time()
+                        return
 
                 else:
                     if carDistanceFromGoal <= min(carDistancesFromGoal):
                         if agentType != backMan:
                             agent.activeState = backMan(agent)
+                        else:
+                            agent.stateTimer = time.time()
                         return
                     else:
                         if ballDistanceFromGoal >= 5000:
                             if agentType != gettingPhysical:
                                 agent.activeState = gettingPhysical(agent)
+                            else:
+                                agent.stateTimer = time.time()
                             return
                         else:
-                            if agentType != backMan:
-                                agent.activeState = backMan(agent)
+                            if agentType != Dribble:
+                                agent.activeState = Dribble(agent)
+                            else:
+                                agent.stateTimer = time.time()
                             return
 
         else:
             agent.activeState = Kickoff(agent)
+
+def launchStateManager(agent):
+    if agent.activeState:
+        if agent.activeState.active:
+            return
+        else:
+            if type(agent.activeState) == airLaunch:
+                agent.activeState = aerialRecovery(agent)
+
+            else:
+                if agent.onSurface:
+                    if agent.getCurrentSpd() < 50:
+                        agent.activeState = airLaunch(agent)
+
+    else:
+        agent.activeState = airLaunch(agent)
 
 def soloStateManager(agent):
     agentType = type(agent.activeState)
@@ -574,9 +828,9 @@ def soloStateManager(agent):
                 if agentType != GroundDefend:
                     agent.activeState = GroundDefend(agent)
 
-            elif goalward:
-                if agentType != GroundDefend:
-                    agent.activeState = GroundDefend(agent)
+            # elif goalward:
+            #     if agentType != GroundDefend:
+            #         agent.activeState = GroundDefend(agent)
 
 
             else:

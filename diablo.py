@@ -19,7 +19,6 @@ class diabloBot(BaseAgent):
         self.flipStart = 0
         self.flipping = False
         self.controller = None
-        self.state = efficientMover
         self.flipTimer = time.time()
         #self.activeState = Chase(self)
         self.activeState = Kickoff(self)
@@ -41,6 +40,7 @@ class diabloBot(BaseAgent):
         self.forward = True
         self.velAngle = 0
         self.onWall = False
+        self.stateTimer = time.time()
 
     def getActiveState(self):
         if type(self.activeState) == JumpingState:
@@ -127,6 +127,7 @@ class diabloBot(BaseAgent):
         self.me.location = Vector([car.physics.location.x, car.physics.location.y, car.physics.location.z])
         self.me.velocity = Vector([car.physics.velocity.x, car.physics.velocity.y, car.physics.velocity.z])
         self.me.rotation = Vector([car.physics.rotation.pitch, car.physics.rotation.yaw, car.physics.rotation.roll])
+        #self.me.rotation = Rotation_Vector(car.physics.rotation)
         self.me.avelocity = Vector([car.physics.angular_velocity.x, car.physics.angular_velocity.y, car.physics.angular_velocity.z])
         self.me.boostLevel = car.boost
         self.onSurface = car.has_wheel_contact
@@ -193,9 +194,7 @@ class diabloBot(BaseAgent):
 
     def get_output(self, packet: GameTickPacket) -> SimpleControllerState:
         self.preprocess(packet)
-        #stateManager(self)
-        #simpleStateManager(self)
-        #halfFlipStateManager(self)
+        #launchStateManager(self)
         if len(self.allies) >=1:
             teamStateManager(self)
         else:
