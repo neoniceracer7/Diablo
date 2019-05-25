@@ -1,12 +1,22 @@
 from Utilities import *
 from States import *
+import time
+import math
 from rlbot.agents.base_agent import BaseAgent, SimpleControllerState
 from rlbot.utils.structures.game_data_struct import GameTickPacket
 from rlbot.utils.game_state_util import GameState, BallState, CarState, Physics, Vector3 as vector3, Rotator
-import time
-import math
+
+from rlutilities.linear_algebra import *
+from rlutilities.mechanics import Aerial, AerialTurn, Dodge, Wavedash, Boostdash
+from rlutilities.simulation import Game, Ball, Car
 
 class diabloBot(BaseAgent):
+    def __init__(self, name, team, index):
+        Game.set_mode("soccar")
+        self.game = Game(index, team)
+        self.index = index
+        self.name = name
+        self.team = team
 
     def initialize_agent(self):
         self.controller_state = SimpleControllerState()
@@ -27,7 +37,6 @@ class diabloBot(BaseAgent):
         self.boosts = []
         self.fieldInfo = []
         self.positions = []
-        self.deltaList = []
         self.time = 0
         self.deltaTime = 0
         self.maxSpd = 2200
@@ -71,7 +80,7 @@ class diabloBot(BaseAgent):
         if angle > 180:
             angle -= 360
 
-        if abs(angle) >150 and self.getCurrentSpd() > 75:
+        if abs(angle) >150 and self.getCurrentSpd() > 200:
             self.forward = False
         else:
             self.forward = True
@@ -80,30 +89,10 @@ class diabloBot(BaseAgent):
         #print(self.forward, angle)
 
 
-    def getAvgDelta(self):
-        if len(self.deltaList) > 0:
-            return sum(self.deltaList)/len(self.deltaList)
-        else:
-            return 1/60
-
 
     def setJumping(self,targetType):
         self.activeState = JumpingState(self,targetType)
 
-    def getAvgSpd(self):
-        distance = 0
-        cap = 0
-        if len(self.positions) >=60:
-            cap = 60
-        else:
-            cap = len(self.deltaList)
-
-        for i in range(cap): #deltaList and positions SHOULD be equal
-            if i != 0:
-                distance+= distance2D(self.positions[i], self.positions[i-1])
-
-        timeElapsed = sum(self.deltaList[:cap])
-        return (distance,timeElapsed)
 
     def getCurrentSpd(self):
         return Vector(self.me.velocity[:2]).magnitude()
@@ -123,6 +112,9 @@ class diabloBot(BaseAgent):
     def preprocess(self, game):
         self.ballPred = self.get_ball_prediction_struct()
         self.players = [self.index]
+        self.game.read_game_information(game,
+                                        self.get_rigid_body_tick(),
+                                        self.get_field_info())
         car = game.game_cars[self.index]
         self.me.location = Vector([car.physics.location.x, car.physics.location.y, car.physics.location.z])
         self.me.velocity = Vector([car.physics.velocity.x, car.physics.velocity.y, car.physics.velocity.z])
@@ -134,12 +126,13 @@ class diabloBot(BaseAgent):
         self.positions.insert(0,self.me.location)
         if len(self.positions) > 200:
             self.positions = self.positions[:200]
-        t = time.time()
-        self.deltaTime = t-self.time
-        self.time = t
-        self.deltaList.insert(0,self.deltaTime)
-        if len(self.deltaList) > 200:
-            self.deltaList = self.deltaList[:200]
+        # t = time.time()
+        # self.deltaTime = t-self.time
+        # self.time = t
+        self.deltaTime = clamp(1/60,1/300,self.game.time_delta)
+        # self.deltaList.insert(0,self.deltaTime)
+        # if len(self.deltaList) > 200:
+        #     self.deltaList = self.deltaList[:200]
 
 
         ball = game.game_ball.physics
@@ -191,14 +184,15 @@ class diabloBot(BaseAgent):
 
 
 
-
     def get_output(self, packet: GameTickPacket) -> SimpleControllerState:
         self.preprocess(packet)
+        #testFlight(self)
         #launchStateManager(self)
         if len(self.allies) >=1:
             teamStateManager(self)
         else:
             soloStateManager(self)
+        #soloStateAerialManager(self)
         action = self.activeState.update()
 
         self.renderer.begin_rendering()

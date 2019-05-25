@@ -1,15 +1,19 @@
 from Utilities import *
 import time
 import math
-from rlbot.agents.base_agent import SimpleControllerState
-import random
+from rlbot.agents.base_agent import BaseAgent, SimpleControllerState
+from rlbot.utils.structures.game_data_struct import GameTickPacket
+from rlbot.utils.game_state_util import GameState, BallState, CarState, Physics, Vector3, Rotator
+
+from rlutilities.linear_algebra import *
+from rlutilities.mechanics import Aerial, AerialTurn, Dodge, Wavedash, Boostdash, Drive #,FollowPath,
+from rlutilities.simulation import Game, Ball, Car
 
 class baseState:
     def __init__(self, agent):
         #generic useful objects
         self.agent = agent
         self.active = True
-        self.agent.stateTimer = time.time()
 
 class State:
     RESET = 0
@@ -64,7 +68,7 @@ class airLaunch(baseState):
             else:
                 self.active = False
                 self.jump = False
-                self.agent.activeState = aerialATBA(self.agent)
+                #self.agent.activeState = flightSystems(self.agent)
 
         if time.time() - self.jumpTimer > 0.15:
 
@@ -86,128 +90,92 @@ class airLaunch(baseState):
                 pitch = 1
 
             stateController.pitch = pitch
+        #print(math.degrees(self.agent.me.rotation[1]))
         return stateController
 
 
-class aerialATBA(baseState):
+class AerialHandler():
     def __init__(self,agent):
-        baseState.__init__(self,agent)
-        self.max_Avel = .4
+        self.agent = agent
+        self.active = False
+        self.setup()
+
+    def setup(self):
+        self.aerial = Aerial(self.agent.game.my_car)
+        self.turn = AerialTurn(self.agent.game.my_car)
+        myGoal = center = Vector([0, 5200 * sign(self.agent.team), 200])
+        enemyGoal = center = Vector([0, 5200 * -sign(self.agent.team), 200])
+        if self.agent.me.boostLevel > 0:
+            for i in range(0, self.agent.ballPred.num_slices):
+                targetVec = Vector([self.agent.ballPred.slices[i].physics.location.x,
+                                    self.agent.ballPred.slices[i].physics.location.y,
+                                    self.agent.ballPred.slices[i].physics.location.z])
+                # interferenceTimer += self.agent.deltaTime
+                # if interferenceTimer < 1:
+                #     if findEnemyClosestToLocation(self.agent,targetVec)[1] < 150:
+                #         break
+                if self.agent.ballPred.slices[i].physics.location.z >= 300:
+                    goalDist = distance2D(center, targetVec)
+                    #if distance2D(myGoal, targetVec) > distance2D(myGoal, self.agent.me.location):
+                    if self.agent.me.location[1] * sign(self.agent.team) > self.agent.ballPred.slices[i].physics.location.y * sign(self.agent.team):
+                        zOffset = 0
+                        if goalDist < 1500:
+                            if targetVec[2] > 600:
+                                zOffset = 70
+                        shotAngle = correctAngle(math.degrees(angle2(targetVec, enemyGoal)) + 90 * -sign(self.agent.team))
+
+
+                        if abs(shotAngle) <=80:
+                            xOffset = clamp(80,-80,(shotAngle*2)*-sign(self.agent.team))
+                            self.aerial.target = vec3(self.agent.ballPred.slices[i].physics.location.x+xOffset,
+                                                      self.agent.ballPred.slices[i].physics.location.y,
+                                                      self.agent.ballPred.slices[i].physics.location.z+zOffset)
+
+                            self.aerial.arrival_time = self.agent.ballPred.slices[i].game_seconds
+
+                            simulation = self.aerial.simulate()
+
+                            # # check if we can reach it by an aerial
+                            if norm(simulation.location - self.aerial.target) < 100:
+                                self.target_ball = self.agent.ballPred.slices[i]
+                                self.xOffset = xOffset
+                                self.zOffset = zOffset
+                                self.active = True
+                                break
+
+    def stillValid(self):
+        for i in range(0, self.agent.ballPred.num_slices):
+            if self.agent.ballPred.slices[i].physics.location.z >= 300:
+                if abs(self.target_ball.game_seconds - self.agent.ballPred.slices[i].game_seconds) < self.agent.deltaTime*3:
+                    difference = 0
+                    difference+= abs((self.agent.ballPred.slices[i].physics.location.x+self.xOffset) - (self.target_ball.physics.location.x+self.zOffset))
+                    difference += abs(self.agent.ballPred.slices[i].physics.location.y - self.target_ball.physics.location.y)
+                    difference += abs((self.agent.ballPred.slices[i].physics.location.z+self.zOffset) - (self.target_ball.physics.location.z+self.zOffset))
+                    if difference < 10:
+                        self.aerial.target = vec3(self.agent.ballPred.slices[i].physics.location.x + self.xOffset,
+                                                  self.agent.ballPred.slices[i].physics.location.y,
+                                                  self.agent.ballPred.slices[i].physics.location.z + self.zOffset)
+
+                        self.aerial.arrival_time = self.agent.ballPred.slices[i].game_seconds
+                        self.target_ball = self.agent.ballPred.slices[i]
+
+                        simulation = self.aerial.simulate()
+                        return
+
+        self.active = False
+        self.setup()
 
     def update(self):
-        stateController = SimpleControllerState()
-        stateController.throttle = 1
-        stateController.boost = True
-
-        if self.agent.onSurface:
-            self.active = False
-            stateController.throttle = 0
-            stateController.boost = False
-
-        location = toLocal(self.agent.ball.location, self.agent.me)
-        #direction = (location - self.agent.me.location).normalize()
-        direction = (self.agent.ball.location - self.agent.me.location).normalize()
-        angle = math.atan2(location[1],location[0])
-
-        #print(direction)
-        if angle > 1:
-            yaw = -1
+        if self.agent.me.boostLevel > 0:
+            self.setup()
+            self.aerial.step(self.agent.deltaTime)
+            self.controls = self.aerial.controls
+            self.controls.jump = True
+            if self.aerial.finished:
+                self.active = False
         else:
-            yaw = 1
-
-        #stateController.yaw = self.changeYaw(-angle)
-        #stateController.pitch = pitch
-        #print(self.agent.me.rotation[1])
-        #stateController.roll = self.changeRoll(self.agent.me.rotation[0])
-
-        return stateController
-
-
-    # def changeYaw(self,rawYaw):
-    #     z_vel = self.agent.me.avelocity[2]
-    #     yaw = 0
-    #     if rawYaw > 0:
-    #         if z_vel < self.max_Avel:
-    #             yaw = rawYaw
-    #
-    #     elif rawYaw < 0:
-    #         if z_vel > - self.max_Avel:
-    #             yaw = rawYaw
-    #
-    #     if z_vel >= 1:
-    #         yaw = -1
-    #
-    #     elif z_vel < -1:
-    #         yaw = 1
-    #
-    #
-    #     return yaw
-    def changeYaw(self,target):
-        yawAngle = self.agent.me.rotation[2]
-        z_vel = self.agent.me.avelocity[2]
-        yaw = 0
-        if yawAngle > target:
-            if z_vel > -self.max_Avel:
-                yaw = 1
-        elif yawAngle < target:
-            if z_vel < self.max_Avel:
-                yaw = -1
-
-        if z_vel > .5:
-            return -1
-        elif z_vel < -.5:
-            return 1
-
-        return yaw
-
-    def changePitch(self,target):
-        pitchAngle = math.degrees(self.agent.me.rotation[1])
-        y_vel = self.agent.me.avelocity[1]
-        pitch = 0
-        if pitchAngle > target:
-            if y_vel > -self.max_Avel:
-                pitch = clamp(1, -1, -1 + abs(y_vel))
-        elif pitchAngle < target:
-            if y_vel < self.max_Avel:
-                pitch = clamp(1, -1, 1 - abs(y_vel))
-
-        if y_vel > 1:
-            pitch = -1
-        elif y_vel < -1:
-            pitch = 1
-        return pitch
-
-    # def changePitch(self,target):
-    #     pitchAngle = math.degrees(self.agent.me.rotation[1])
-    #     y_vel = self.agent.me.avelocity[1]
-    #     target = math.degrees(target)
-    #     if abs(alternativeAngle(pitchAngle) - target) < abs(pitchAngle - target):
-    #         target = alternativeAngle(target)
-    #     print(target,pitchAngle)
-    #     pitch = 0
-    #     if pitchAngle > target:
-    #         if y_vel > -self.max_Avel:
-    #             pitch = clamp(1,-1,-1 - y_vel)
-    #             #pitch = -1
-    #     elif pitchAngle < target:
-    #         if y_vel < self.max_Avel:
-    #             pitch = clamp(1, -1, 1 - y_vel)
-    #             #pitch = 1
-    #
-    #     return pitch
-
-    def changeRoll(self,current):
-        x_vel = self.agent.me.avelocity[0]
-        roll = 0
-        if current > 0:
-            if x_vel > -self.max_Avel:
-                roll = -1
-        elif current < 0:
-            if x_vel < self.max_Avel:
-                roll = 1
-
-        return roll
-
+            self.active = False
+        return self.controls
 
 
 class JumpingState(baseState):
@@ -216,7 +184,6 @@ class JumpingState(baseState):
         self.active = True
         self.targetCode = targetCode
         self.flip_obj = FlipStatus()
-        self.agent.stateTimer = time.time()
 
     def update(self):
         controller_state = SimpleControllerState()
@@ -273,7 +240,6 @@ class GroundShot(baseState):
     def __init__(self, agent):
         self.agent = agent
         self.active = True
-        self.agent.stateTimer = time.time()
 
     def update(self):
         return lineupShot(self.agent,3)
@@ -284,28 +250,27 @@ class Dribble(baseState):
         #generic useful objects
         self.agent = agent
         self.active = True
-        self.agent.stateTimer = time.time()
 
     def update(self):
-        if not kickOffTest(self.agent):
-            #return boostHungry(self.agent)
-            return lineupShot(self.agent,1)
-        else:
-            self.active = False
-            #print("Retiring groundshot")
-            self.agent.activeState = Kickoff(self.agent)
-            return self.agent.activeState.update()
+        # if not kickOffTest(self.agent):
+        #     #return boostHungry(self.agent)
+        return lineupShot(self.agent,1)
+        # else:
+        #     self.active = False
+        #     #print("Retiring groundshot")
+        #     self.agent.activeState = Kickoff(self.agent)
+        #     return self.agent.activeState.update()
 
 
 class GroundDefend(baseState):
     def update(self):
-        if not kickOffTest(self.agent):
-            return defendGoal(self.agent)
-        else:
-            self.active = False
-            #print("Retiring groundshot")
-            self.agent.activeState = Kickoff(self.agent)
-            return self.agent.activeState.update()
+        # if not kickOffTest(self.agent):
+        return defendGoal(self.agent)
+        # else:
+        #     self.active = False
+        #     #print("Retiring groundshot")
+        #     self.agent.activeState = Kickoff(self.agent)
+        #     return self.agent.activeState.update()
 
 
 class AerialDefend(baseState):
@@ -337,7 +302,6 @@ class Kickoff(baseState):
         self.active = True
         self.startTime = time.time()
         self.flipState = None
-        self.agent.stateTimer = time.time()
 
     def retire(self):
         self.active = False
@@ -386,13 +350,12 @@ class aerialRecovery(baseState):
     def update(self):
         if self.agent.onSurface or self.agent.me.location[2] < 100:
             self.active = False
-        # self.me.rotation = Vector([car.physics.rotation.pitch, car.physics.rotation.yaw, car.physics.rotation.roll])
         controller_state = SimpleControllerState()
-        if self.agent.me.rotation[0] > 0:
-            controller_state.pitch = -1
-
-        elif self.agent.me.rotation[0] < 0:
-            controller_state.pitch = 1
+        # if self.agent.me.rotation[1] > 0:
+        #     controller_state.pitch = 1
+        #
+        # elif self.agent.me.rotation[1] < 0:
+        #     controller_state.pitch = -1
 
         if self.agent.me.rotation[2] > 0:
             controller_state.roll = -1
@@ -405,6 +368,21 @@ class aerialRecovery(baseState):
 
         elif self.agent.me.rotation[0] < self.agent.velAngle:
             controller_state.yaw = 1
+
+        # if self.agent.me.avelocity[0] > 2:
+        #     controller_state.yaw = -1
+        # elif self.agent.me.avelocity[0] < 2:
+        #     controller_state.yaw = 1
+        #
+        # if self.agent.me.avelocity[1] > 2:
+        #     controller_state.pitch= 1
+        # elif self.agent.me.avelocity[1] < 2:
+        #     controller_state.pitch = -1
+        #
+        # if self.agent.me.avelocity[2] > 2:
+        #     controller_state.roll = -1
+        # elif self.agent.me.avelocity[2] < 2:
+        #     controller_state.roll = 1
 
         if self.active:
             controller_state.throttle = 1
@@ -423,7 +401,6 @@ class halfFlip(baseState):
         self.secondJump = False
         self.jumpStart = 0
         self.timeCreated = time.time()
-        self.agent.stateTimer = time.time()
         #print("half flipping!!!")
 
 
@@ -476,7 +453,6 @@ class Chase(baseState):
     def __init__(self, agent):
         self.agent = agent
         self.active = True
-        self.agent.stateTimer = time.time()
 
     def update(self):
         if not kickOffTest(self.agent):
@@ -563,7 +539,7 @@ def simpleStateManager(agent):
                 if agent.me.location[2] > 150:
                     if agentType != aerialRecovery:
                         agent.activeState = aerialRecovery(agent)
-                        return
+                    return
 
             if ballDistanceFromGoal < 2500:
                 if agentType != GroundDefend:
@@ -573,9 +549,9 @@ def simpleStateManager(agent):
                 if agentType != GroundDefend:
                     agent.activeState = GroundDefend(agent)
 
-            # elif goalward:
-            #     if agentType != GroundDefend:
-            #         agent.activeState = GroundDefend(agent)
+            elif goalward:
+                if agentType != GroundDefend:
+                    agent.activeState = GroundDefend(agent)
 
 
             else:
@@ -629,7 +605,7 @@ def teamStateManager(agent):
             agent.ballDelay = 6
             ballStruct = findSuitableBallPosition2(agent, 150, agent.getCurrentSpd(), agent.me.location)
             agent.selectedBallPred = ballStruct
-
+            goalward = ballHeadedTowardsMyGoal(agent)
 
             if ballStruct != None:
                 if ballStruct == agent.ballPred.slices[0]:
@@ -650,6 +626,19 @@ def teamStateManager(agent):
 
             if agentType == aerialRecovery:
                 if agent.activeState.active != False:
+                    _test = AerialHandler(agent)
+                    if _test.active:
+                        if _test.target_ball.game_seconds - agent.gameInfo.seconds_elapsed < timeTillBallReady:
+                            agent.activeState = _test
+                    return
+            if agentType == AerialHandler:
+                if agent.activeState.active != False:
+                    return
+
+            _test = AerialHandler(agent)
+            if _test.active:
+                if _test.target_ball.game_seconds - agent.gameInfo.seconds_elapsed < timeTillBallReady :
+                    agent.activeState = _test
                     return
 
             if not agent.onSurface:
@@ -662,42 +651,35 @@ def teamStateManager(agent):
                 soloStateManager(agent)
                 return
 
-            if agent.activeState != None:
-                if agent.activeState.active and (time.time() - agent.stateTimer) < 1:
-                    return
-                else:
-                    print("new state",(time.time() - agent.stateTimer),time.time())
+
 
             if len(agent.allies) == 1:
                 if carDistanceFromBall< cardistancesFromBall[0]:
                     if carDistanceFromGoal < ballDistanceFromGoal:
-                        if agentType != Dribble:
-                            agent.activeState = Dribble(agent)
+                        if not goalward:
+                            if agentType != Dribble:
+                                agent.activeState = Dribble(agent)
+                            return
                         else:
-                            agent.stateTimer = time.time()
-                        return
+                            if agentType != GroundDefend:
+                                agent.activeState = GroundDefend(agent)
+                            return
                     else:
-                        if ballDistanceFromGoal <= 6500:
+                        if ballDistanceFromGoal <= 3500:
                             if agent.activeState != backMan:
                                 agent.activeState = backMan(agent)
-                            else:
-                                agent.stateTimer = time.time()
                             return
                         else:
                             agent.activeState = secondMan(agent)
 
                 else:
-                    if ballDistanceFromGoal >=6500:
+                    if ballDistanceFromGoal >=3500:
                         if agentType != secondMan:
                             agent.activeState = secondMan(agent)
-                        else:
-                            agent.stateTimer = time.time()
                         return
                     else:
                         if agentType != backMan:
                             agent.activeState = backMan(agent)
-                        else:
-                            agent.stateTimer = time.time()
                         return
 
             else:
@@ -705,49 +687,35 @@ def teamStateManager(agent):
                     if carDistanceFromGoal < ballDistanceFromGoal:
                         if agentType != Dribble:
                             agent.activeState = Dribble(agent)
-                        else:
-                            agent.stateTimer = time.time()
                         return
                     else:
                         if agent.activeState != backMan:
                             agent.activeState = backMan(agent)
-                        else:
-                            agent.stateTimer = time.time()
                         return
 
                 if ballDistanceFromGoal >= 6500:
                     if carDistanceFromGoal > min(carDistancesFromGoal):
                         if agentType != gettingPhysical:
                             agent.activeState = gettingPhysical(agent)
-                        else:
-                            agent.stateTimer = time.time()
                         return
                     else:
                         if agent.activeState != secondMan:
                             agent.activeState = secondMan(agent)
-                        else:
-                            agent.stateTimer = time.time()
                         return
 
                 else:
                     if carDistanceFromGoal <= min(carDistancesFromGoal):
                         if agentType != backMan:
                             agent.activeState = backMan(agent)
-                        else:
-                            agent.stateTimer = time.time()
                         return
                     else:
                         if ballDistanceFromGoal >= 5000:
                             if agentType != gettingPhysical:
                                 agent.activeState = gettingPhysical(agent)
-                            else:
-                                agent.stateTimer = time.time()
                             return
                         else:
                             if agentType != Dribble:
                                 agent.activeState = Dribble(agent)
-                            else:
-                                agent.stateTimer = time.time()
                             return
 
         else:
@@ -761,6 +729,9 @@ def launchStateManager(agent):
             if type(agent.activeState) == airLaunch:
                 agent.activeState = aerialRecovery(agent)
 
+            # elif type(agent.activeState) == flightSystems:
+            #     agent.activeState = aerialRecovery(agent)
+
             else:
                 if agent.onSurface:
                     if agent.getCurrentSpd() < 50:
@@ -769,6 +740,8 @@ def launchStateManager(agent):
     else:
         agent.activeState = airLaunch(agent)
 
+
+
 def soloStateManager(agent):
     agentType = type(agent.activeState)
 
@@ -776,15 +749,15 @@ def soloStateManager(agent):
         if not kickOffTest(agent):
             myGoalLoc = center = Vector([0, 5150 * sign(agent.team), 200])
 
-            ballDistanceFromGoal = distance2D(myGoalLoc,agent.ball)
-            carDistanceFromGoal = distance2D(myGoalLoc,agent.me)
+            ballDistanceFromGoal = distance2D(myGoalLoc, agent.ball)
+            carDistanceFromGoal = distance2D(myGoalLoc, agent.me)
 
             timeTillBallReady = 9999
             agent.ballDelay = 6
 
-            #ballStruct = findSuitableBallPosition(agent, 125)
-            #ballStruct = findSoonestBallTouchable(agent)
-            ballStruct =  findSuitableBallPosition2(agent, 150,agent.getCurrentSpd(),agent.me.location)
+            # ballStruct = findSuitableBallPosition(agent, 125)
+            # ballStruct = findSoonestBallTouchable(agent)
+            ballStruct = findSuitableBallPosition2(agent, 150, agent.getCurrentSpd(), agent.me.location)
             agent.selectedBallPred = ballStruct
             goalward = ballHeadedTowardsMyGoal(agent)
             openNet = openGoalOpportunity(agent)
@@ -794,11 +767,10 @@ def soloStateManager(agent):
                     timeTillBallReady = 0
                 else:
                     timeTillBallReady = ballStruct.game_seconds - agent.gameInfo.seconds_elapsed
-                #print(timeTillBallReady)
+                # print(timeTillBallReady)
             else:
                 timeTillBallReady = 0
             agent.ballDelay = timeTillBallReady
-
 
             if agentType == JumpingState:
                 if agent.activeState.active != False:
@@ -812,29 +784,39 @@ def soloStateManager(agent):
                 if agent.activeState.active != False:
                     return
 
+            if agentType == AerialHandler:
+                if agent.activeState.active != False:
+                    return
+
+            _test = AerialHandler(agent)
+            if _test.active:
+                if _test.target_ball.game_seconds - agent.gameInfo.seconds_elapsed < timeTillBallReady:
+                    agent.activeState = _test
+                    #print("going for aerial!")
+                    return
+
             if not agent.onSurface:
                 if agent.me.location[2] > 150:
                     if agentType != aerialRecovery:
                         agent.activeState = aerialRecovery(agent)
                         return
 
-
             if ballDistanceFromGoal < 2500:
                 if agentType != GroundDefend:
                     agent.activeState = GroundDefend(agent)
 
 
-            elif carDistanceFromGoal > ballDistanceFromGoal+50:
+            elif carDistanceFromGoal > ballDistanceFromGoal + 50:
                 if agentType != GroundDefend:
                     agent.activeState = GroundDefend(agent)
 
-            # elif goalward:
-            #     if agentType != GroundDefend:
-            #         agent.activeState = GroundDefend(agent)
+            elif goalward:
+                if agentType != GroundDefend:
+                    agent.activeState = GroundDefend(agent)
 
 
             else:
-                #if timeTillBallReady < 2:
+                # if timeTillBallReady < 2:
                 if openNet:
                     if agentType != Dribble:
                         agent.activeState = Dribble(agent)
@@ -854,7 +836,6 @@ def soloStateManager(agent):
                     if agentType != Dribble:
                         agent.activeState = Dribble(agent)
 
-
                 # else:
                 #     if agentType != GetBoost:
                 #         agent.activeState = GetBoost(agent)
@@ -862,3 +843,200 @@ def soloStateManager(agent):
         else:
             agent.activeState = Kickoff(agent)
 
+# def soloStateAerialManager(agent):
+#     agentType = type(agent.activeState)
+#
+#     if agentType != Kickoff:
+#         if not kickOffTest(agent):
+#             myGoalLoc = center = Vector([0, 5150 * sign(agent.team), 200])
+#
+#             ballDistanceFromGoal = distance2D(myGoalLoc,agent.ball)
+#             carDistanceFromGoal = distance2D(myGoalLoc,agent.me)
+#
+#             timeTillBallReady = 9999
+#             agent.ballDelay = 6
+#
+#             #ballStruct = findSuitableBallPosition(agent, 125)
+#             #ballStruct = findSoonestBallTouchable(agent)
+#             ballStruct =  findSuitableBallPosition2(agent, 150,agent.getCurrentSpd(),agent.me.location)
+#             agent.selectedBallPred = ballStruct
+#             goalward = ballHeadedTowardsMyGoal(agent)
+#             openNet = openGoalOpportunity(agent)
+#
+#             if ballStruct != None:
+#                 if ballStruct == agent.ballPred.slices[0]:
+#                     timeTillBallReady = 0
+#                 else:
+#                     timeTillBallReady = ballStruct.game_seconds - agent.gameInfo.seconds_elapsed
+#                 #print(timeTillBallReady)
+#             else:
+#                 timeTillBallReady = 0
+#             agent.ballDelay = timeTillBallReady
+#
+#
+#             if agentType == JumpingState:
+#                 if agent.activeState.active != False:
+#                     return
+#
+#             if agentType == halfFlip:
+#                 if agent.activeState.active != False:
+#                     return
+#
+#             if agentType == aerialRecovery:
+#                 if agent.activeState.active != False:
+#                     return
+#
+#             if agentType == AerialHandler:
+#                 if agent.activeState.active != False:
+#                     return
+#
+#             _test = AerialHandler(agent)
+#             if _test.active:
+#                 if _test.target_ball.game_seconds - agent.gameInfo.seconds_elapsed < timeTillBallReady :
+#                     agent.activeState = _test
+#                     return
+#
+#             if not agent.onSurface:
+#                 if agent.me.location[2] > 150:
+#                     if agentType != aerialRecovery:
+#                         agent.activeState = aerialRecovery(agent)
+#                         return
+#
+#
+#             if ballDistanceFromGoal < 2500:
+#                 if agentType != GroundDefend:
+#                     agent.activeState = GroundDefend(agent)
+#
+#
+#             elif carDistanceFromGoal > ballDistanceFromGoal+50:
+#                 if agentType != GroundDefend:
+#                     agent.activeState = GroundDefend(agent)
+#
+#             elif goalward:
+#                 if agentType != GroundDefend:
+#                     agent.activeState = GroundDefend(agent)
+#
+#
+#             else:
+#                 #if timeTillBallReady < 2:
+#                 if openNet:
+#                     if agentType != Dribble:
+#                         agent.activeState = Dribble(agent)
+#                     return
+#
+#                 elif challengeDecider(agent):
+#                     if agentType != Dribble:
+#                         agent.activeState = Dribble(agent)
+#                     return
+#
+#
+#                 elif agent.me.boostLevel >= 25:
+#                     if agentType != Dribble:
+#                         agent.activeState = Dribble(agent)
+#
+#                 else:
+#                     if agentType != Dribble:
+#                         agent.activeState = Dribble(agent)
+#
+#
+#                 # else:
+#                 #     if agentType != GetBoost:
+#                 #         agent.activeState = GetBoost(agent)
+#
+#         else:
+#             agent.activeState = Kickoff(agent)
+
+
+
+# def soloStateManager(agent):
+#     agentType = type(agent.activeState)
+#
+#     if agentType != Kickoff:
+#         if not kickOffTest(agent):
+#             myGoalLoc = center = Vector([0, 5150 * sign(agent.team), 200])
+#
+#             ballDistanceFromGoal = distance2D(myGoalLoc,agent.ball)
+#             carDistanceFromGoal = distance2D(myGoalLoc,agent.me)
+#
+#             timeTillBallReady = 9999
+#             agent.ballDelay = 6
+#
+#             #ballStruct = findSuitableBallPosition(agent, 125)
+#             #ballStruct = findSoonestBallTouchable(agent)
+#             ballStruct =  findSuitableBallPosition2(agent, 150,agent.getCurrentSpd(),agent.me.location)
+#             agent.selectedBallPred = ballStruct
+#             goalward = ballHeadedTowardsMyGoal(agent)
+#             openNet = openGoalOpportunity(agent)
+#
+#             if ballStruct != None:
+#                 if ballStruct == agent.ballPred.slices[0]:
+#                     timeTillBallReady = 0
+#                 else:
+#                     timeTillBallReady = ballStruct.game_seconds - agent.gameInfo.seconds_elapsed
+#                 #print(timeTillBallReady)
+#             else:
+#                 timeTillBallReady = 0
+#             agent.ballDelay = timeTillBallReady
+#
+#
+#             if agentType == JumpingState:
+#                 if agent.activeState.active != False:
+#                     return
+#
+#             if agentType == halfFlip:
+#                 if agent.activeState.active != False:
+#                     return
+#
+#             if agentType == aerialRecovery:
+#                 if agent.activeState.active != False:
+#                     return
+#
+#             if not agent.onSurface:
+#                 if agent.me.location[2] > 150:
+#                     if agentType != aerialRecovery:
+#                         agent.activeState = aerialRecovery(agent)
+#                         return
+#
+#
+#             if ballDistanceFromGoal < 2500:
+#                 if agentType != GroundDefend:
+#                     agent.activeState = GroundDefend(agent)
+#
+#
+#             elif carDistanceFromGoal > ballDistanceFromGoal+50:
+#                 if agentType != GroundDefend:
+#                     agent.activeState = GroundDefend(agent)
+#
+#             # elif goalward:
+#             #     if agentType != GroundDefend:
+#             #         agent.activeState = GroundDefend(agent)
+#
+#
+#             else:
+#                 #if timeTillBallReady < 2:
+#                 if openNet:
+#                     if agentType != Dribble:
+#                         agent.activeState = Dribble(agent)
+#                     return
+#
+#                 elif challengeDecider(agent):
+#                     if agentType != Dribble:
+#                         agent.activeState = Dribble(agent)
+#                     return
+#
+#
+#                 elif agent.me.boostLevel >= 25:
+#                     if agentType != Dribble:
+#                         agent.activeState = Dribble(agent)
+#
+#                 else:
+#                     if agentType != Dribble:
+#                         agent.activeState = Dribble(agent)
+#
+#
+#                 # else:
+#                 #     if agentType != GetBoost:
+#                 #         agent.activeState = GetBoost(agent)
+#
+#         else:
+#             agent.activeState = Kickoff(agent)
