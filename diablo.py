@@ -5,10 +5,10 @@ import math
 from rlbot.agents.base_agent import BaseAgent, SimpleControllerState
 from rlbot.utils.structures.game_data_struct import GameTickPacket
 from rlbot.utils.game_state_util import GameState, BallState, CarState, Physics, Vector3 as vector3, Rotator
-
 from rlutilities.linear_algebra import *
 from rlutilities.mechanics import Aerial, AerialTurn, Dodge, Wavedash, Boostdash
 from rlutilities.simulation import Game, Ball, Car
+
 
 class diabloBot(BaseAgent):
     def __init__(self, name, team, index):
@@ -17,8 +17,9 @@ class diabloBot(BaseAgent):
         self.index = index
         self.name = name
         self.team = team
+        self.setup()
 
-    def initialize_agent(self):
+    def setup(self):
         self.controller_state = SimpleControllerState()
         self.me = physicsObject()
         self.ball = physicsObject()
@@ -50,6 +51,8 @@ class diabloBot(BaseAgent):
         self.velAngle = 0
         self.onWall = False
         self.stateTimer = time.time()
+        self.contested = True
+        self.flipTimer = time.time()
 
     def getActiveState(self):
         if type(self.activeState) == JumpingState:
@@ -91,7 +94,16 @@ class diabloBot(BaseAgent):
 
 
     def setJumping(self,targetType):
-        self.activeState = JumpingState(self,targetType)
+        _time = time.time()
+        if _time - self.flipTimer > 2.5:
+            if self.me.location[2] > 250:
+                self.activeState = JumpingState(self, -1)
+            else:
+                self.activeState = JumpingState(self, targetType)
+            self.flipTimer = _time
+
+    def setDashing(self,target):
+        self.activeState = WaveDashing(self,target)
 
 
     def getCurrentSpd(self):
@@ -119,20 +131,10 @@ class diabloBot(BaseAgent):
         self.me.location = Vector([car.physics.location.x, car.physics.location.y, car.physics.location.z])
         self.me.velocity = Vector([car.physics.velocity.x, car.physics.velocity.y, car.physics.velocity.z])
         self.me.rotation = Vector([car.physics.rotation.pitch, car.physics.rotation.yaw, car.physics.rotation.roll])
-        #self.me.rotation = Rotation_Vector(car.physics.rotation)
         self.me.avelocity = Vector([car.physics.angular_velocity.x, car.physics.angular_velocity.y, car.physics.angular_velocity.z])
         self.me.boostLevel = car.boost
         self.onSurface = car.has_wheel_contact
-        self.positions.insert(0,self.me.location)
-        if len(self.positions) > 200:
-            self.positions = self.positions[:200]
-        # t = time.time()
-        # self.deltaTime = t-self.time
-        # self.time = t
         self.deltaTime = clamp(1/60,1/300,self.game.time_delta)
-        # self.deltaList.insert(0,self.deltaTime)
-        # if len(self.deltaList) > 200:
-        #     self.deltaList = self.deltaList[:200]
 
 
         ball = game.game_ball.physics
@@ -148,8 +150,6 @@ class diabloBot(BaseAgent):
             if self.me.location[2] > 70:
                 self.onWall = True
 
-
-        # collects info for all other cars in match, updates objects in self.players accordingly
         self.allies.clear()
         self.enemies.clear()
         for i in range(game.num_cars):
@@ -170,16 +170,14 @@ class diabloBot(BaseAgent):
                 else:
                     self.enemies.append(_obj)
         self.gameInfo = game.game_info
-        #print(self.Game.time_delta)
-
-
-        #boost info
         self.boosts.clear()
         self.fieldInfo = self.get_field_info()
         for index in range(len(self.fieldInfo.boost_pads)):
             packetBoost = game.game_boosts[index]
             fieldInfoBoost = self.fieldInfo.boost_pads[index]
             self.boosts.append(Boost_obj([fieldInfoBoost.location.x,fieldInfoBoost.location.y,fieldInfoBoost.location.z],fieldInfoBoost.is_full_boost, packetBoost.is_active))
+
+        ballContested(self)
 
 
 

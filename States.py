@@ -37,6 +37,8 @@ class airLaunch(baseState):
         self.secondJump = False
         self.firstJumpHold = 0.5
         self.secondJumpHold = 0.4
+        self.active = True
+        #print("launching")
 
 
     def update(self):
@@ -68,29 +70,22 @@ class airLaunch(baseState):
             else:
                 self.active = False
                 self.jump = False
+                self.agent.activeState = AerialHandler(self.agent)
                 #self.agent.activeState = flightSystems(self.agent)
 
-        if time.time() - self.jumpTimer > 0.15:
+        if time.time() - self.jumpTimer > 0.15 and time.time() - self.jumpTimer < 0.35:
 
-            pitchAngle = math.degrees(self.agent.me.rotation[1])
-            y_vel = self.agent.me.avelocity[1]
-            pitch = 0
-            if pitchAngle > 50:
-                if y_vel > -.4:
-                    pitch = clamp(1,-1,-1 + abs(y_vel))
-            elif pitchAngle < 50:
-                if y_vel < .4:
-                    pitch = clamp(1,-1,1 - abs(y_vel))
-
-            #print(pitchAngle)
-
-            if y_vel > 1:
-                pitch = -1
-            elif y_vel < -1:
-                pitch = 1
-
-            stateController.pitch = pitch
-        #print(math.degrees(self.agent.me.rotation[1]))
+            # pitchAngle = correctAngle(math.degrees(self.agent.me.rotation[0]))
+            # x_vel = self.agent.me.avelocity[0]
+            # pitch = 0
+            # if pitchAngle > 50:
+            #     if x_vel > -.8:
+            #         pitch = -1
+            # if pitchAngle < 50:
+            #     if x_vel < .8:
+            #         pitch = 1
+            #print(pitchAngle,correctAngle(math.degrees(self.agent.me.rotation[2])))
+            stateController.pitch = 1
         return stateController
 
 
@@ -98,34 +93,35 @@ class AerialHandler():
     def __init__(self,agent):
         self.agent = agent
         self.active = False
+        self.timer = time.time()
         self.setup()
 
     def setup(self):
         self.aerial = Aerial(self.agent.game.my_car)
         self.turn = AerialTurn(self.agent.game.my_car)
-        myGoal = center = Vector([0, 5200 * sign(self.agent.team), 200])
-        enemyGoal = center = Vector([0, 5200 * -sign(self.agent.team), 200])
+        myGoal = center = Vector([0, 5120 * sign(self.agent.team), 200])
+        enemyGoal = center = Vector([0, 5120 * -sign(self.agent.team), 200])
         if self.agent.me.boostLevel > 0:
             for i in range(0, self.agent.ballPred.num_slices):
                 targetVec = Vector([self.agent.ballPred.slices[i].physics.location.x,
                                     self.agent.ballPred.slices[i].physics.location.y,
                                     self.agent.ballPred.slices[i].physics.location.z])
-                # interferenceTimer += self.agent.deltaTime
-                # if interferenceTimer < 1:
-                #     if findEnemyClosestToLocation(self.agent,targetVec)[1] < 150:
-                #         break
+
                 if self.agent.ballPred.slices[i].physics.location.z >= 300:
+                    if self.agent.ballPred.slices[i].physics.location.z > 650:
+                        if self.agent.ballPred.slices[i].physics.location.y * -sign(self.agent.team) > 5000 * -sign(self.agent.team):
+                            continue
+
                     goalDist = distance2D(center, targetVec)
-                    #if distance2D(myGoal, targetVec) > distance2D(myGoal, self.agent.me.location):
-                    if self.agent.me.location[1] * sign(self.agent.team) > self.agent.ballPred.slices[i].physics.location.y * sign(self.agent.team):
-                        zOffset = 0
+                    if self.agent.me.location[1] * -sign(self.agent.team) < self.agent.ballPred.slices[i].physics.location.y * -sign(self.agent.team):
+                        zOffset = -10
                         if goalDist < 1500:
                             if targetVec[2] > 600:
                                 zOffset = 70
                         shotAngle = correctAngle(math.degrees(angle2(targetVec, enemyGoal)) + 90 * -sign(self.agent.team))
 
 
-                        if abs(shotAngle) <=80:
+                        if abs(shotAngle) <=75:
                             xOffset = clamp(80,-80,(shotAngle*2)*-sign(self.agent.team))
                             self.aerial.target = vec3(self.agent.ballPred.slices[i].physics.location.x+xOffset,
                                                       self.agent.ballPred.slices[i].physics.location.y,
@@ -141,6 +137,18 @@ class AerialHandler():
                                 self.xOffset = xOffset
                                 self.zOffset = zOffset
                                 self.active = True
+                                if self.agent.onSurface:
+                                    if self.agent.ballPred.slices[i].physics.location.z >= 400:
+                                        targetLocal = toLocal(Vector([self.agent.ballPred.slices[i].physics.location.x+xOffset,
+                                                      self.agent.ballPred.slices[i].physics.location.y,
+                                                      self.agent.ballPred.slices[i].physics.location.z+zOffset]), self.agent.me)
+
+                                        carToBallAngle = correctAngle(math.degrees(math.atan2(targetLocal[1], targetLocal[0])))
+                                        if abs(carToBallAngle) < 45:
+                                            if (targetLocal-self.agent.me.location).magnitude() > 1500:
+                                                self.agent.activeState = airLaunch(self.agent)
+                                                self.active = False
+                                                return self.agent.activeState.update()
                                 break
 
     def stillValid(self):
@@ -175,7 +183,24 @@ class AerialHandler():
                 self.active = False
         else:
             self.active = False
+        if time.time() - self.timer > 0.5:
+            if self.agent.onSurface:
+                self.active = False
+                #print("stop idling?")
         return self.controls
+
+class WaveDashing(baseState):
+    def __init__(self,agent,targVec):
+        baseState.__init__(self,agent)
+        self.action = Wavedash(agent.game.my_car)
+        self.action.direction = vec2(targVec[0],targVec[1])
+
+    def update(self):
+        self.action.step(self.agent.deltaTime)
+        if self.action.finished:
+            self.active = False
+        return self.action.controls
+
 
 
 class JumpingState(baseState):
@@ -212,10 +237,15 @@ class JumpingState(baseState):
                 controller_state.pitch = 0
                 controller_state.steer = 0
                 controller_state.yaw = 0
-            if self.targetCode == 3:
+            elif self.targetCode == 3:
                 controller_state.pitch = 1
                 controller_state.steer = 0
                 controller_state.throttle = -1
+
+            elif self.targetCode == -1:
+                controller_state.pitch = 0
+                controller_state.steer = 0
+                controller_state.throttle = 0
 
         controller_state.jump = jump
         controller_state.boost = False
@@ -351,11 +381,6 @@ class aerialRecovery(baseState):
         if self.agent.onSurface or self.agent.me.location[2] < 100:
             self.active = False
         controller_state = SimpleControllerState()
-        # if self.agent.me.rotation[1] > 0:
-        #     controller_state.pitch = 1
-        #
-        # elif self.agent.me.rotation[1] < 0:
-        #     controller_state.pitch = -1
 
         if self.agent.me.rotation[2] > 0:
             controller_state.roll = -1
@@ -368,21 +393,6 @@ class aerialRecovery(baseState):
 
         elif self.agent.me.rotation[0] < self.agent.velAngle:
             controller_state.yaw = 1
-
-        # if self.agent.me.avelocity[0] > 2:
-        #     controller_state.yaw = -1
-        # elif self.agent.me.avelocity[0] < 2:
-        #     controller_state.yaw = 1
-        #
-        # if self.agent.me.avelocity[1] > 2:
-        #     controller_state.pitch= 1
-        # elif self.agent.me.avelocity[1] < 2:
-        #     controller_state.pitch = -1
-        #
-        # if self.agent.me.avelocity[2] > 2:
-        #     controller_state.roll = -1
-        # elif self.agent.me.avelocity[2] < 2:
-        #     controller_state.roll = 1
 
         if self.active:
             controller_state.throttle = 1
@@ -729,9 +739,6 @@ def launchStateManager(agent):
             if type(agent.activeState) == airLaunch:
                 agent.activeState = aerialRecovery(agent)
 
-            # elif type(agent.activeState) == flightSystems:
-            #     agent.activeState = aerialRecovery(agent)
-
             else:
                 if agent.onSurface:
                     if agent.getCurrentSpd() < 50:
@@ -754,10 +761,11 @@ def soloStateManager(agent):
 
             timeTillBallReady = 9999
             agent.ballDelay = 6
+            if agent.contested:
+                ballStruct = findSuitableBallPosition2(agent, 220, agent.getCurrentSpd(), agent.me.location)
+            else:
+                ballStruct = findSuitableBallPosition2(agent, 120, agent.getCurrentSpd(), agent.me.location)
 
-            # ballStruct = findSuitableBallPosition(agent, 125)
-            # ballStruct = findSoonestBallTouchable(agent)
-            ballStruct = findSuitableBallPosition2(agent, 150, agent.getCurrentSpd(), agent.me.location)
             agent.selectedBallPred = ballStruct
             goalward = ballHeadedTowardsMyGoal(agent)
             openNet = openGoalOpportunity(agent)
@@ -775,8 +783,14 @@ def soloStateManager(agent):
             if agentType == JumpingState:
                 if agent.activeState.active != False:
                     return
+            if agentType == airLaunch:
+                if agent.activeState.active != False:
+                    return
 
             if agentType == halfFlip:
+                if agent.activeState.active != False:
+                    return
+            if agentType == WaveDashing:
                 if agent.activeState.active != False:
                     return
 
