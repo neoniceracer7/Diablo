@@ -109,7 +109,7 @@ class diabloBot(BaseAgent):
 
     def setJumping(self,targetType):
         _time = time.time()
-        if _time - self.flipTimer > 2.5:
+        if _time - self.flipTimer > 2:
             if self.me.location[2] > 250:
                 self.activeState = JumpingState(self, -1)
             else:
