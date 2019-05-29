@@ -699,6 +699,14 @@ def ShellTime(agent):
         destination = Vector([targetVec[0]+xOff,targetVec[1]+sign(agent.team)*yOff,targetVec[2]])
 
     placeVecWithinArena(destination)
+    # if agent.team == 0:
+    #     if destination[1] > 4800:
+    #         destination.data[1] = 4800
+    #         print("moved destination")
+    # else:
+    #     if destination[1] < -4800:
+    #         destination.data[1] = -4800
+    #         print("moved destination")
     result = timeDelayedMovement(agent, destination, agent.ballDelay)
 
     destination.data[2] = 75
@@ -1030,8 +1038,8 @@ def inaccurateArrivalEstimator(agent,destination):
     else:
         angle = correctAngle(math.degrees(math.atan2(localTarg[1],localTarg[0]))-180)
     if distance < 2000:
-        if abs(angle) > 50:
-            distance+= distance*(angle/100)
+        if abs(angle) > 60:
+            distance+= distance*(abs(angle)/100)
 
     if agent.me.boostLevel > 0:
         maxSpd = clamp(2300,currentSpd,currentSpd+ (distance*.3))
@@ -1257,7 +1265,7 @@ def efficientMover(agent,target_object,target_speed):
                         controller_state.throttle = 1
 
     if slideBool:
-        if agent.getCurrentSpd() < 400:
+        if agent.getCurrentSpd() < 300:
             controller_state.handbrake = False
             #print("over-ruling handbrake",time.time())
 
