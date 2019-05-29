@@ -10,6 +10,8 @@ from rlutilities.mechanics import Aerial, AerialTurn, Dodge, Wavedash, Boostdash
 from rlutilities.simulation import Game, Ball, Car
 
 
+
+
 class diabloBot(BaseAgent):
     def __init__(self, name, team, index):
         Game.set_mode("soccar")
@@ -17,9 +19,8 @@ class diabloBot(BaseAgent):
         self.index = index
         self.name = name
         self.team = team
-        self.setup()
 
-    def setup(self):
+    def initialize_agent(self):
         self.controller_state = SimpleControllerState()
         self.me = physicsObject()
         self.ball = physicsObject()
@@ -53,6 +54,7 @@ class diabloBot(BaseAgent):
         self.stateTimer = time.time()
         self.contested = True
         self.flipTimer = time.time()
+        self.goalPred = None
 
     def getActiveState(self):
         if type(self.activeState) == JumpingState:
@@ -178,6 +180,7 @@ class diabloBot(BaseAgent):
             self.boosts.append(Boost_obj([fieldInfoBoost.location.x,fieldInfoBoost.location.y,fieldInfoBoost.location.z],fieldInfoBoost.is_full_boost, packetBoost.is_active))
 
         ballContested(self)
+        self.goalPred = None
 
 
 

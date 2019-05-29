@@ -9,6 +9,7 @@ from rlutilities.linear_algebra import *
 from rlutilities.mechanics import Aerial, AerialTurn, Dodge, Wavedash, Boostdash, Drive #,FollowPath,
 from rlutilities.simulation import Game, Ball, Car
 
+
 class baseState:
     def __init__(self, agent):
         #generic useful objects
@@ -109,7 +110,7 @@ class AerialHandler():
 
                 if self.agent.ballPred.slices[i].physics.location.z >= 300:
                     if self.agent.ballPred.slices[i].physics.location.z > 650:
-                        if self.agent.ballPred.slices[i].physics.location.y * -sign(self.agent.team) > 5000 * -sign(self.agent.team):
+                        if self.agent.ballPred.slices[i].physics.location.y * -sign(self.agent.team) < 5000 * -sign(self.agent.team):
                             continue
 
                     goalDist = distance2D(center, targetVec)
@@ -145,10 +146,12 @@ class AerialHandler():
 
                                         carToBallAngle = correctAngle(math.degrees(math.atan2(targetLocal[1], targetLocal[0])))
                                         if abs(carToBallAngle) < 45:
-                                            if (targetLocal-self.agent.me.location).magnitude() > 1500:
-                                                self.agent.activeState = airLaunch(self.agent)
-                                                self.active = False
-                                                return self.agent.activeState.update()
+                                            #if (targetLocal-self.agent.me.location).magnitude() > 1500:
+                                            if distance2D(self.agent.me.location,targetLocal) > 1500:
+                                                if self.agent.ballPred.slices[i].physics.location.z >= 900:
+                                                    self.agent.activeState = airLaunch(self.agent)
+                                                    self.active = False
+                                                    return self.agent.activeState.update()
                                 break
 
     def stillValid(self):
