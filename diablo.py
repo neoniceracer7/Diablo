@@ -1,13 +1,25 @@
-from Utilities import *
-from States import *
+import os
 import time
 import math
 from rlbot.agents.base_agent import BaseAgent, SimpleControllerState
 from rlbot.utils.structures.game_data_struct import GameTickPacket
 from rlbot.utils.game_state_util import GameState, BallState, CarState, Physics, Vector3 as vector3, Rotator
-from rlutilities.linear_algebra import *
-from rlutilities.mechanics import Aerial, AerialTurn, Dodge, Wavedash, Boostdash
-from rlutilities.simulation import Game, Ball, Car
+try:
+    from rlutilities.linear_algebra import *
+    from rlutilities.mechanics import Aerial, AerialTurn, Dodge, Wavedash, Boostdash
+    from rlutilities.simulation import Game, Ball, Car
+except:
+    print("==========================================")
+    print("\nrlutilities import failed.")
+    print("Make sure rlutilities folder is local to Diablo bot's files. Running the setup.py file should download the module for you.")
+    path = str(os.path.realpath(__file__))
+    print("setup.py should be located here: "+path[:path.rfind('\\')])
+
+    print("\n==========================================")
+    quit()
+
+from Utilities import *
+from States import *
 
 
 
