@@ -109,12 +109,27 @@ class AerialHandler():
                                     self.agent.ballPred.slices[i].physics.location.z])
 
                 if self.agent.ballPred.slices[i].physics.location.z >= 300:
-                    if self.agent.ballPred.slices[i].physics.location.z > 650:
-                        if self.agent.ballPred.slices[i].physics.location.y * -sign(self.agent.team) < 5000 * -sign(self.agent.team):
-                            continue
+                    # if self.agent.onSurface:
+                    #     if self.agent.team == 0:
+                    #         if self.agent.me.location[1]+50 > targetVec[1]:
+                    #             continue
+                    #     else:
+                    #         if self.agent.me.location[1] - 50 < targetVec[1]:
+                    #             continue
+
 
                     goalDist = distance2D(center, targetVec)
-                    if self.agent.me.location[1] * -sign(self.agent.team) < self.agent.ballPred.slices[i].physics.location.y * -sign(self.agent.team):
+                    # if self.agent.me.location[1] * -sign(self.agent.team) < \
+                    #         self.agent.ballPred.slices[i].physics.location.y * -sign(self.agent.team):
+                    acceptable = False
+                    if self.agent.team == 0:
+                        if self.agent.me.location[1]  < targetVec[1]:
+                            acceptable = True
+                    else:
+                        if self.agent.me.location[1]  > targetVec[1]:
+                            acceptable = True
+
+                    if acceptable:
                         zOffset = -10
                         if goalDist < 1500:
                             if targetVec[2] > 600:
@@ -123,6 +138,7 @@ class AerialHandler():
 
 
                         if abs(shotAngle) <=75:
+
                             xOffset = clamp(80,-80,(shotAngle*2)*-sign(self.agent.team))
                             self.aerial.target = vec3(self.agent.ballPred.slices[i].physics.location.x+xOffset,
                                                       self.agent.ballPred.slices[i].physics.location.y,
@@ -134,6 +150,7 @@ class AerialHandler():
 
                             # # check if we can reach it by an aerial
                             if norm(simulation.location - self.aerial.target) < 100:
+
                                 self.target_ball = self.agent.ballPred.slices[i]
                                 self.xOffset = xOffset
                                 self.zOffset = zOffset
