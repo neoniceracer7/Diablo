@@ -348,7 +348,7 @@ class Kickoff(baseState):
         self.started = False
         self.firstFlip = False
         self.secondFlip = False
-        self.finalFlipDistance = 900
+        self.finalFlipDistance = 650
         self.active = True
         self.startTime = time.time()
         self.flipState = None
@@ -372,7 +372,7 @@ class Kickoff(baseState):
                 self.retire()
 
         jumping = False
-        ballDistance = findDistance(self.agent.me.location, self.agent.ball.location)
+        ballDistance = distance2D(self.agent.me.location, self.agent.ball.location)
 
         if not self.started:
             if not kickOffTest(self.agent):
@@ -389,10 +389,13 @@ class Kickoff(baseState):
                 return self.flipState.update()
 
         if ballDistance > self.finalFlipDistance:
-            return greedyMover(self.agent, self.agent.ball)
+            destination = self.agent.ball.location
+            if not self.firstFlip:
+                destination.data[1] += (sign(self.agent.team)*200)
+            return greedyMover(self.agent, destination)
 
         else:
-            self.flipState = JumpingState(self.agent,1)
+            self.flipState = JumpingState(self.agent,0)
             self.secondFlip = True
             return self.flipState.update()
 
@@ -610,13 +613,19 @@ def simpleStateManager(agent):
 
 class emergencyDefend(baseState):
     def update(self):
-        if self.agent.goalPred.game_seconds - self.agent.gameInfo.seconds_elapsed > 1.5:
-            if distance2D(self.agent.me.location,convertStructLocationToVector(self.agent.goalPred)) > 100:
-                return testMover(self.agent,convertStructLocationToVector(self.agent.goalPred),2200)
+        penetrationPosition = convertStructLocationToVector(self.agent.goalPred)
+        penetrationPosition.data[1] = 5200 * sign(self.agent.team)
+        if self.agent.goalPred.game_seconds - self.agent.gameInfo.seconds_elapsed > .5:
+            if distance2D(self.agent.me.location,penetrationPosition) > 100:
+                return testMover(self.agent,penetrationPosition,2300)
         else:
-            print("emergency jumping!",time.time())
-            self.activeState = JumpingState(self.agent,-1)
-            return self.activeState.update()
+            if penetrationPosition[2] > 200:
+                self.activeState = JumpingState(self.agent,-1)
+                return self.activeState.update()
+
+            else:
+                self.activeState = JumpingState(self.agent,0)
+                return self.activeState.update()
 
 def parseCarInfo(carList, index, _max = False):
     val = 0
@@ -653,7 +662,7 @@ def teamStateManager(agent):
                 cdfb = distance2D(agent.ball.location, c.location)
                 carDistancesFromGoal.append(cdfg)
                 cardistancesFromBall.append(cdfb)
-                carInfo.append([cdfg,cdfb])
+                carInfo.append([cdfg, cdfb, c])
 
             carDistanceFromGoal = distance2D(myGoalLoc, agent.me)
             carDistanceFromBall = distance2D(agent.me.location,agent.ball.location)
@@ -662,7 +671,10 @@ def teamStateManager(agent):
 
             timeTillBallReady = 9999
             agent.ballDelay = 6
-            ballStruct = findSuitableBallPosition2(agent, 150, agent.getCurrentSpd(), agent.me.location)
+            if agent.contested:
+                ballStruct = findSuitableBallPosition2(agent, 300, agent.getCurrentSpd(), agent.me.location)
+            else:
+                ballStruct = findSuitableBallPosition2(agent, 120, agent.getCurrentSpd(), agent.me.location)
             agent.selectedBallPred = ballStruct
             goalward = ballHeadedTowardsMyGoal(agent)
 
@@ -719,6 +731,7 @@ def teamStateManager(agent):
             if agent.goalPred != None:
                 if agentType != emergencyDefend:
                     agent.activeState = emergencyDefend(agent)
+                return
 
 
 
@@ -767,8 +780,16 @@ def teamStateManager(agent):
                         return
 
                 elif carDistanceFromBall < max(cardistancesFromBall):
-                    mostForward = parseCarInfo(carInfo, 0, _max = True)
-                    if mostForward[1] > ballDistanceFromGoal:
+                    mostForward = parseCarInfo(carInfo, 0, _max=True)
+                    moveForward = False
+                    if agent.team == 0:
+                        if mostForward[2].location[1] - 50 > agent.ball.location[1]:
+                            moveForward = True
+                    else:
+                        if mostForward[2].location[1] - 50 < agent.ball.location[1]:
+                            moveForward = True
+
+                    if moveForward:
                         if agentType != Dribble:
                             agent.activeState = Dribble(agent)
                         return
@@ -780,34 +801,8 @@ def teamStateManager(agent):
                 else:
                     if agent.activeState != backMan:
                         agent.activeState = backMan(agent)
-                    #print("I was assigned!")
+                    # print("I was assigned!")
                     return
-
-                # if ballDistanceFromGoal >= 6500:
-                #     if carDistanceFromGoal > min(carDistancesFromGoal):
-                #         if agentType != gettingPhysical:
-                #             agent.activeState = gettingPhysical(agent)
-                #         return
-                #     else:
-                #         if agent.activeState != secondMan:
-                #             agent.activeState = secondMan(agent)
-                #         return
-                #
-                # else:
-                #     if carDistanceFromGoal <= min(carDistancesFromGoal):
-                #         if agentType != secondMan:
-                #             agent.activeState = secondMan(agent)
-                #         return
-                #     else:
-                #         if ballDistanceFromGoal >= 5000:
-                #             if agentType != gettingPhysical:
-                #                 agent.activeState = gettingPhysical(agent)
-                #             return
-                #         else:
-                #             if agentType != Dribble:
-                #                 agent.activeState = Dribble(agent)
-                #             return
-            print("I shouldn't get here")
 
         else:
             agent.activeState = Kickoff(agent)
@@ -895,6 +890,11 @@ def soloStateManager(agent):
                     if agentType != aerialRecovery:
                         agent.activeState = aerialRecovery(agent)
                         return
+
+            if agent.goalPred != None:
+                if agentType != emergencyDefend:
+                    agent.activeState = emergencyDefend(agent)
+                return
 
             if ballDistanceFromGoal < 2500:
                 if agentType != GroundDefend:
