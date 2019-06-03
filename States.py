@@ -96,12 +96,15 @@ class AerialHandler():
         self.active = False
         self.timer = time.time()
         self.setup()
+        self.threshold = 300
 
     def setup(self):
         self.aerial = Aerial(self.agent.game.my_car)
         self.turn = AerialTurn(self.agent.game.my_car)
         myGoal = center = Vector([0, 5120 * sign(self.agent.team), 200])
         enemyGoal = center = Vector([0, 5120 * -sign(self.agent.team), 200])
+        aboveThreshold = False
+
         if self.agent.me.boostLevel > 0:
             for i in range(0, self.agent.ballPred.num_slices):
                 targetVec = Vector([self.agent.ballPred.slices[i].physics.location.x,
@@ -109,15 +112,8 @@ class AerialHandler():
                                     self.agent.ballPred.slices[i].physics.location.z])
 
                 if self.agent.ballPred.slices[i].physics.location.z >= 300:
-                    # if self.agent.onSurface:
-                    #     if self.agent.team == 0:
-                    #         if self.agent.me.location[1]+50 > targetVec[1]:
-                    #             continue
-                    #     else:
-                    #         if self.agent.me.location[1] - 50 < targetVec[1]:
-                    #             continue
-
-
+                    if not aboveThreshold:
+                        aboveThreshold =True
                     goalDist = distance2D(center, targetVec)
                     # if self.agent.me.location[1] * -sign(self.agent.team) < \
                     #         self.agent.ballPred.slices[i].physics.location.y * -sign(self.agent.team):
@@ -163,13 +159,17 @@ class AerialHandler():
 
                                         carToBallAngle = correctAngle(math.degrees(math.atan2(targetLocal[1], targetLocal[0])))
                                         if abs(carToBallAngle) < 45:
-                                            #if (targetLocal-self.agent.me.location).magnitude() > 1500:
+                                            #if not self.agent.onWall:
                                             if distance2D(self.agent.me.location,targetLocal) > 1500:
                                                 if self.agent.ballPred.slices[i].physics.location.z >= 900:
                                                     self.agent.activeState = airLaunch(self.agent)
                                                     self.active = False
                                                     return self.agent.activeState.update()
                                 break
+
+                else:
+                    if aboveThreshold:
+                        break
 
     def stillValid(self):
         for i in range(0, self.agent.ballPred.num_slices):

@@ -417,7 +417,7 @@ def saferBoostGrabber(agent):
     agent.renderCalls.append(renderCall(agent.renderer.draw_line_3d, agent.me.location.data, closestBoost.location.data,
                                         agent.renderer.yellow))
 
-    return efficientMover(agent, closestBoost.location, agent.maxSpd)
+    return efficientMover(agent, closestBoost.location, agent.maxSpd,boostHunt=False)
 
 def boostHungry(agent):
     closestBoost = agent.me
@@ -440,7 +440,7 @@ def boostHungry(agent):
 
     agent.renderCalls.append(renderCall(agent.renderer.draw_line_3d, agent.me.location.data, closestBoost.location.data,
                                         agent.renderer.yellow))
-    return efficientMover(agent, closestBoost.location, agent.maxSpd)
+    return efficientMover(agent, closestBoost.location, agent.maxSpd,boostHunt=False)
 
 def distance1D(origin,destination,index):
     return abs(getLocation(origin)[index] - getLocation(destination)[index])
@@ -502,9 +502,9 @@ def backmanDefense(agent):
             agent.renderCalls.append(renderCall(agent.renderer.draw_line_3d, agent.me.location.data, center,
                                                 agent.renderer.blue))
             if distance2D(agent.me.location,rendevouz) > 500:
-                return efficientMover(agent, rendevouz, 2200)
+                return efficientMover(agent, rendevouz, 2200,boostHunt=True)
             else:
-                return efficientMover(agent,rendevouz,50)
+                return efficientMover(agent,rendevouz,50,boostHunt=True)
 
     else:
         centerField = Vector([0,agent.ball.location[1] + 3000*sign(agent.team),0])
@@ -513,7 +513,7 @@ def backmanDefense(agent):
         else:
             agent.renderCalls.append(renderCall(agent.renderer.draw_line_3d, agent.me.location.data, centerField.data,
                                                 agent.renderer.blue))
-            return efficientMover(agent, centerField, 2200)
+            return efficientMover(agent, centerField, 2200,boostHunt=True)
 
 
 def secondManSupport(agent):
@@ -528,7 +528,7 @@ def secondManSupport(agent):
     agent.renderCalls.append(renderCall(agent.renderer.draw_line_3d, agent.me.location.data, destination.data,
                                         agent.renderer.green))
 
-    return efficientMover(agent,destination,2200)
+    return efficientMover(agent,destination,2200,boostHunt=True)
 
 def ownGoalCheck(agent,targetVec):
     leftPost = Vector([sign(agent.team) * 800, 5100 * sign(agent.team), 200])
@@ -1145,13 +1145,13 @@ def testMover(agent, target_object,targetSpd):
             agent.renderCalls.append(
                 renderCall(agent.renderer.draw_line_3d, agent.me.location.data, target_object.data,
                            agent.renderer.yellow))
-            return efficientMover(agent,target_object,targetSpd)
+            return efficientMover(agent,target_object,targetSpd,boostHunt=False)
     currentSpd = agent.getCurrentSpd()
     _distance = distance2D(agent.me, target_object)
 
     #print(currentSpd)
     if targetSpd < currentSpd+150 or agent.me.boostLevel <=0 or targetSpd < 900 or (getLocation(target_object)[2]>120 and _distance < 300):
-        return efficientMover(agent,target_object,targetSpd)
+        return efficientMover(agent,target_object,targetSpd,boostHunt=False)
 
     location = toLocal(target_object, agent.me)
     controller_state = SimpleControllerState()
@@ -1162,7 +1162,7 @@ def testMover(agent, target_object,targetSpd):
             agent.forward = False
 
     if not agent.forward:
-        return efficientMover(agent, target_object, targetSpd)
+        return efficientMover(agent, target_object, targetSpd,boostHunt=False)
 
 
     #_distance = distance2D(agent.me, target_object)
@@ -1229,12 +1229,20 @@ def timeDelayedMovement(agent,targetVec,delay):
         adjustedSpd = 0
         if dist > 150:
             adjustedSpd = dist/10
-        return efficientMover(agent, targetVec, (dist/delay)+adjustedSpd)
+        return efficientMover(agent, targetVec, (dist/delay)+adjustedSpd,boostHunt=True)
 
 
 
-def efficientMover(agent,target_object,target_speed):
+def efficientMover(agent,target_object,target_speed,boostHunt = False):
     controller_state = SimpleControllerState()
+    if boostHunt:
+        if agent.me.boostLevel < 88:
+            newTarget = convenientBoost(agent,getLocation(target_object))
+            if newTarget != None:
+                target_object = newTarget
+                agent.renderCalls.append(
+                    renderCall(agent.renderer.draw_line_3d, agent.me.location.data, newTarget.data,
+                               agent.renderer.yellow))
     location = toLocal(target_object, agent.me)
     angle_to_target = math.atan2(location.data[1], location.data[0])
     _distance = distance2D(agent.me, target_object)
@@ -1352,7 +1360,7 @@ def exampleController(agent, target_object,target_speed):
     if distance > 400:
         #print("switching to efficient")
         agent.state = efficientMover
-        return efficientMover(agent,target_object,target_speed)
+        return efficientMover(agent,target_object,target_speed,boostHunt=True)
 
     controller_state = SimpleControllerState()
     controller_state.handbrake = False
@@ -1456,6 +1464,54 @@ def findSuitableBallPosition2(agent, heightMax, speed, origin):
         agent.goalPred = ballInGoal
     return agent.ballPred.slices[-1]
 
+def inaccurateArrivalEstimatorRemote(agent,start,destination):
+    distance = clamp(math.inf,1,distance2D(start,destination))
+    currentSpd = clamp(2300,1,agent.getCurrentSpd())
+
+    if agent.me.boostLevel > 0:
+        maxSpd = clamp(2300,currentSpd,currentSpd+ (distance*.3))
+    else:
+        maxSpd = clamp(2200, currentSpd, currentSpd + (distance*.15))
+
+    return distance/maxSpd
+
+def CB_Reworked(agent,targetVec):
+    dist = clamp(25000, 1, distance2D(agent.me.location, targetVec))
+    ballDist = clamp(25000, 1, distance2D(agent.me.location, agent.ball.location))
+    destinationEstimate = inaccurateArrivalEstimator(agent,targetVec)
+    locTarget = toLocal(targetVec, agent.me)
+    targetAngle = correctAngle(math.degrees(math.atan2(locTarget[1], locTarget[0])))
+
+    bestBoost = None
+    bestAngle = 0
+    angleDisparity = 1000
+    bestDist = math.inf
+    bestEstimate = math.inf
+    goodBoosts = []
+    for b in agent.boosts:
+        _dist = distance2D(b.location, agent.me.location)
+        if _dist < dist*.6:
+            localCoords = toLocal(b.location, agent.me)
+            angle = correctAngle(math.degrees(math.atan2(localCoords[1], localCoords[0])))
+            _angleDisparity = targetAngle - angle
+
+            if _angleDisparity > targetAngle-30 and _angleDisparity < targetAngle+30:
+                goodBoosts.append(b)
+
+    for b in goodBoosts:
+        pathEstimate = inaccurateArrivalEstimator(agent,b.location) + inaccurateArrivalEstimatorRemote(agent,b.location,targetVec)
+        if agent.me.boostLevel < 50:
+            if b.bigBoost:
+                pathEstimate*=.8
+        if pathEstimate < bestEstimate:
+            bestBoost = b
+            bestEstimate = pathEstimate
+
+    if bestEstimate < destinationEstimate*1.15 or bestEstimate < agent.ballDelay:
+        return bestBoost.location
+    else:
+        return None
+
 def convenientBoost(agent,targetVec):
     dist = clamp(25000,1,distance2D(agent.me.location,targetVec))
     ballDist = clamp(25000,1,distance2D(agent.me.location,agent.ball.location))
@@ -1501,8 +1557,8 @@ def convenientBoost(agent,targetVec):
             bestDist = d
 
 
-    if bestBoost != None and abs(angleDisparity) and (bestDist/spd + distance2D(bestBoost.location,targetVec)/spd < agent.ballDelay or ballDist > 3500):
-        if (bestDist/spd) + (distance2D(bestBoost.location,targetVec)/spd) <= agent.ballDelay or ballDist >= 3500:
+    if bestBoost != None and abs(angleDisparity) and (bestDist/spd + distance2D(bestBoost.location,targetVec)/spd < agent.ballDelay):
+        if (bestDist/spd) + (distance2D(bestBoost.location,targetVec)/spd) <= agent.ballDelay or ballDist >= 3000:
             return bestBoost.location
 
     return None
