@@ -44,7 +44,6 @@ class diabloBot(BaseAgent):
         self.flipping = False
         self.controller = None
         self.flipTimer = time.time()
-        #self.activeState = Chase(self)
         self.activeState = Kickoff(self)
         self.gameInfo = None
         self.onSurface = False
@@ -89,7 +88,6 @@ class diabloBot(BaseAgent):
 
     def determineFacing(self):
         offset = self.me.location + self.me.velocity
-        #direction = self.me.location + offset
         loc = toLocal(offset,self.me)
         angle = math.degrees(math.atan2(loc[1],loc[0]))
         if angle < -180:
@@ -103,7 +101,6 @@ class diabloBot(BaseAgent):
             self.forward = True
 
         self.velAngle = angle
-        #print(self.forward, angle)
 
 
 
@@ -199,13 +196,10 @@ class diabloBot(BaseAgent):
 
     def get_output(self, packet: GameTickPacket) -> SimpleControllerState:
         self.preprocess(packet)
-        #testFlight(self)
-        #launchStateManager(self)
         if len(self.allies) >=1:
             teamStateManager(self)
         else:
             soloStateManager(self)
-        #soloStateAerialManager(self)
         action = self.activeState.update()
 
         self.renderer.begin_rendering()
