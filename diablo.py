@@ -20,14 +20,31 @@ except:
 
 from Utilities import *
 from States import *
+import cProfile, pstats, io
 
+def profile(fnc):
+    """A decorator that uses cProfile to profile a function"""
 
+    def inner(*args, **kwargs):
+        pr = cProfile.Profile()
+        pr.enable()
+        retval = fnc(*args, **kwargs)
+        pr.disable()
+        s = io.StringIO()
+        sortby = 'cumulative'
+        ps = pstats.Stats(pr, stream=s).sort_stats(sortby)
+        ps.print_stats()
+        print(s.getvalue())
+        return retval
+
+    return inner
 
 
 class diabloBot(BaseAgent):
     def __init__(self, name, team, index):
         Game.set_mode("soccar")
         self.game = Game(index, team)
+        self.time = 0
         self.index = index
         self.name = name
         self.team = team
@@ -50,7 +67,6 @@ class diabloBot(BaseAgent):
         self.boosts = []
         self.fieldInfo = []
         self.positions = []
-        self.time = 0
         self.deltaTime = 0
         self.maxSpd = 2200
         self.ballPred = []
@@ -64,8 +80,16 @@ class diabloBot(BaseAgent):
         self.onWall = False
         self.stateTimer = time.time()
         self.contested = True
-        self.flipTimer = time.time()
+        self.flipTimer = 0
         self.goalPred = None
+        self.wallShot = False
+        self.carLength = 118.007
+        self.carWidth = 84.2
+        self.carHeight = 36.159
+        self.openGoal = False
+        self.maxDT = 1/120
+        self.aerial = None #Aerial(agent.game.my_car)
+        self.a_turn = None #AerialTurn(agent.game.my_car)
 
     def getActiveState(self):
         if type(self.activeState) == JumpingState:
@@ -86,6 +110,9 @@ class diabloBot(BaseAgent):
     def setHalfFlip(self):
         self.activeState = halfFlip(self)
 
+    def setLaunch(self):
+        self.activeState = airLaunch(self)
+
     def determineFacing(self):
         offset = self.me.location + self.me.velocity
         loc = toLocal(offset,self.me)
@@ -102,16 +129,25 @@ class diabloBot(BaseAgent):
 
         self.velAngle = angle
 
-
-
     def setJumping(self,targetType):
-        _time = time.time()
-        if _time - self.flipTimer > 2:
+        _time = self.time
+        if _time - self.flipTimer >= 1.9:
             if self.me.location[2] > 250:
                 self.activeState = JumpingState(self, -1)
             else:
                 self.activeState = JumpingState(self, targetType)
             self.flipTimer = _time
+        # else:
+        #     print("tried to jump but timer not rdy", self.flipTimer,self.time)
+
+    # def setJumping(self,targetType):
+    #     _time = time.time()
+    #     if _time - self.flipTimer > 2:
+    #         if self.me.location[2] > 250:
+    #             self.activeState = JumpingState(self, -1)
+    #         else:
+    #             self.activeState = JumpingState(self, targetType)
+    #         self.flipTimer = _time
 
     def setDashing(self,target):
         self.activeState = WaveDashing(self,target)
@@ -145,7 +181,8 @@ class diabloBot(BaseAgent):
         self.me.avelocity = Vector([car.physics.angular_velocity.x, car.physics.angular_velocity.y, car.physics.angular_velocity.z])
         self.me.boostLevel = car.boost
         self.onSurface = car.has_wheel_contact
-        self.deltaTime = clamp(1/60,1/300,self.game.time_delta)
+        self.deltaTime = clamp(1, self.maxDT, game.game_info.seconds_elapsed - self.time)
+        self.time = game.game_info.seconds_elapsed
 
 
         ball = game.game_ball.physics
@@ -180,20 +217,38 @@ class diabloBot(BaseAgent):
                     self.allies.append(_obj)
                 else:
                     self.enemies.append(_obj)
+
         self.gameInfo = game.game_info
         self.boosts.clear()
         self.fieldInfo = self.get_field_info()
-        for index in range(len(self.fieldInfo.boost_pads)):
+        for index in range(self.fieldInfo.num_boosts):
             packetBoost = game.game_boosts[index]
             fieldInfoBoost = self.fieldInfo.boost_pads[index]
-            self.boosts.append(Boost_obj([fieldInfoBoost.location.x,fieldInfoBoost.location.y,fieldInfoBoost.location.z],fieldInfoBoost.is_full_boost, packetBoost.is_active))
+            boostStatus = False
+            if packetBoost.timer <= 0:
+                boostStatus = True
+            boostLocation = [fieldInfoBoost.location.x, fieldInfoBoost.location.y, fieldInfoBoost.location.z]
+            # if boostLocation != self.badBoostLocation:
+            self.boosts.append(
+                Boost_obj([fieldInfoBoost.location.x, fieldInfoBoost.location.y, fieldInfoBoost.location.z],
+                          fieldInfoBoost.is_full_boost, boostStatus))
 
         ballContested(self)
         self.goalPred = None
+        self.currentSpd = clamp(2300,0.001,self.getCurrentSpd())
+        #self.ballGrounded = isBallGrounded(self, 125, 20)
+        self.ballGrounded = False
+        if len(self.enemies) > 0:
+            self.closestEnemyToBall, self.closestEnemyToBallDistance = findEnemyClosestToLocation2D(self,self.ball.location)
+        else:
+            self.closestEnemyToBall = self.me
+            self.closestEnemyToMe = self.me
+            self.closestEnemyToBallDistance = 0
+            self.closestEnemyToMeDistance = 0
+            self.contested = False
+            self.enemyAttacking = False
 
-
-
-
+    #@profile
     def get_output(self, packet: GameTickPacket) -> SimpleControllerState:
         self.preprocess(packet)
         if len(self.allies) >=1:
@@ -203,7 +258,8 @@ class diabloBot(BaseAgent):
         action = self.activeState.update()
 
         self.renderer.begin_rendering()
-        self.renderer.draw_string_2d(100, 100, 1, 1, str(type(self.activeState)), self.renderer.white())
+        if self.team == 0:
+            self.renderer.draw_string_2d(100, 100, 1, 1, str(type(self.activeState)), self.renderer.white())
 
         for each in self.renderCalls:
             each.run()
