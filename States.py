@@ -93,13 +93,13 @@ class AerialHandler():
         old = convertStructLocationToVector(self.struct)
         new = convertStructLocationToVector(updatedStruct)
 
-        if findDistance(old,new) < 5:
+        if findDistance(old,new) < 10:
             return True
         return False
 
 
     def update(self):
-        self.active = self.structViable()
+        self.active = self.structViable() and not self.agent.aerial.finished
         return aerialWorkHorse(self.agent,self.struct)
 
 class WaveDashing(baseState):
@@ -571,7 +571,8 @@ def teamStateManager(agent):
                 if agent.me.location[2] > 150:
                     if agentType != aerialRecovery:
                         agent.activeState = aerialRecovery(agent)
-                        return
+                    return
+
 
             if agent.goalPred != None:
                 if agentType != emergencyDefend:
@@ -672,6 +673,9 @@ def soloStateManager(agent):
 
     if agentType != Kickoff:
         if not kickOffTest(agent):
+            if agentType == AerialHandler:
+                if agent.activeState.active != False:
+                    return
             myGoalLoc = center = Vector([0, 5150 * sign(agent.team), 200])
 
             ballDistanceFromGoal = distance2D(myGoalLoc, agent.ball)
@@ -715,21 +719,10 @@ def soloStateManager(agent):
                 if agent.activeState.active != False:
                     return
 
-            # if agentType == AerialHandler:
-            #     if agent.activeState.active != False:
-            #         return
-
-            # _test = AerialHandler(agent)
-            # if _test.active:
-            #     if _test.target_ball.game_seconds - agent.gameInfo.seconds_elapsed < timeTillBallReady:
-            #         agent.activeState = _test
-            #         return
-
             if aerialStruct != None:
-                if agentType == AerialHandler:
-                    agent.activeState.refresh(aerialStruct)
-                agent.activeState = AerialHandler(agent,aerialStruct)
+                agent.activeState = AerialHandler(agent, aerialStruct)
                 return
+
 
             if agentType == aerialRecovery:
                 if agent.activeState.active != False:
@@ -740,7 +733,7 @@ def soloStateManager(agent):
                 if agent.me.location[2] > 150:
                     if agentType != aerialRecovery:
                         agent.activeState = aerialRecovery(agent)
-                        return
+                    return
 
             if agent.goalPred != None:
                 if agentType != emergencyDefend:

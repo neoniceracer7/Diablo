@@ -729,7 +729,7 @@ def playDefensive(agent):
     # elif dist > 100:
     #     return efficientMover(agent, centerGoal, 500, True)
     else:
-        print("turning")
+        #print("turning")
         return turnTowardsPosition(agent, agent.ball.location, 2)
 
 def playBack(agent):
@@ -2176,16 +2176,16 @@ def aerialWorkHorse(agent,struct):
             math.degrees(math.atan2(targetLocal[1], targetLocal[0])))
 
         maxAngle = clamp(45,2,distance2D(agent.me.location,targetVec)/100)
-        if abs(carToBallAngle) > maxAngle:
-            print("driving to target")
-            agent.forward = True
-            return efficientMover(agent,targetVec,1000,boostHunt = False)
+        # if abs(carToBallAngle) > maxAngle:
+        #     #print("driving to target")
+        #     agent.forward = True
+        #     return efficientMover(agent,targetVec,1000,boostHunt = False)
         # else:
         #     print("launching")
         #     agent.setLaunch()
         #     return agent.activeState.update()
 
-    print("returning aerial controls")
+    #print("returning aerial controls")
     aerial.step(agent.deltaTime)
     controls = aerial.controls
     if agent.onSurface:
@@ -2258,7 +2258,7 @@ def aerialSelection(agent, struct):
         aerial.target = vec3(targetVec[0], targetVec[1], targetVec[2])
 
         simulation = aerial.simulate()
-        if norm(simulation.location - aerial.target) < 100:
+        if norm(simulation.location - aerial.target) < 50:
             return True
 
     return False
@@ -2318,7 +2318,7 @@ def findSuitableBallPosition(agent, heightMax, speed, origin):
 
         else:
             if aerialStruct == None:
-                if pred.physics.location.z >= clamp(700,200,_distance/3):
+                if pred.physics.location.z >= 350:
                     aboveThreshold = True
                     if valid:
                         if agent.me.boostLevel > 0:
