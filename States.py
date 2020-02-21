@@ -338,26 +338,29 @@ class Kickoff(baseState):
 
 class aerialRecovery(baseState):
     def update(self):
-        if self.agent.onSurface or self.agent.me.location[2] < 100:
-            self.active = False
-        controller_state = SimpleControllerState()
+        if self.agent.me.location[2] < 600:
+            if self.agent.onSurface or self.agent.me.location[2] < 100:
+                self.active = False
+            controller_state = SimpleControllerState()
 
-        if self.agent.me.rotation[2] > 0:
-            controller_state.roll = -1
+            if self.agent.me.rotation[2] > 0:
+                controller_state.roll = -1
 
-        elif self.agent.me.rotation[2] < 0:
-            controller_state.roll = 1
+            elif self.agent.me.rotation[2] < 0:
+                controller_state.roll = 1
 
-        if self.agent.me.rotation[0] > self.agent.velAngle:
-            controller_state.yaw = -1
+            if self.agent.me.rotation[0] > self.agent.velAngle:
+                controller_state.yaw = -1
 
-        elif self.agent.me.rotation[0] < self.agent.velAngle:
-            controller_state.yaw = 1
+            elif self.agent.me.rotation[0] < self.agent.velAngle:
+                controller_state.yaw = 1
 
-        if self.active:
-            controller_state.throttle = 1
+            if self.active:
+                controller_state.throttle = 1
+            else:
+                controller_state.throttle = 0
         else:
-            controller_state.throttle = 0
+            controller_state = SimpleControllerState()
 
         return controller_state
 
@@ -469,6 +472,8 @@ class emergencyDefend(baseState):
         if self.agent.goalPred.game_seconds - self.agent.gameInfo.seconds_elapsed > .1:
             if distance2D(self.agent.me.location,penetrationPosition) > 100:
                 return testMover(self.agent,penetrationPosition,2300)
+            else:
+                return testMover(self.agent, penetrationPosition, 100)
         else:
             if penetrationPosition[2] > 300:
                 self.activeState = JumpingState(self.agent,-1)
@@ -627,7 +632,7 @@ def teamStateManager(agent):
                     mostForward = parseCarInfo(carInfo, 0, _max=True)
                     moveForward = False
                     if agent.team == 0:
-                        if mostForward[2].location[1] - 50 > agent.ball.location[1]:
+                        if mostForward[2].location[1] + 50 > agent.ball.location[1]:
                             moveForward = True
                     else:
                         if mostForward[2].location[1] - 50 < agent.ball.location[1]:

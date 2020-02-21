@@ -2174,16 +2174,18 @@ def aerialWorkHorse(agent,struct):
 
         carToBallAngle = correctAngle(
             math.degrees(math.atan2(targetLocal[1], targetLocal[0])))
-
-        maxAngle = clamp(45,2,distance2D(agent.me.location,targetVec)/100)
-        # if abs(carToBallAngle) > maxAngle:
-        #     #print("driving to target")
-        #     agent.forward = True
-        #     return efficientMover(agent,targetVec,1000,boostHunt = False)
-        # else:
-        #     print("launching")
-        #     agent.setLaunch()
-        #     return agent.activeState.update()
+        targDist = distance2D(agent.me.location,targetVec)
+        maxAngle = clamp(10,2,targDist/200)
+        if abs(carToBallAngle) > maxAngle:
+            #print("driving to target")
+            agent.forward = True
+            return efficientMover(agent,targetVec,2200,boostHunt = False)
+        else:
+            if targDist > clamp(2800,1000,agent.getCurrentSpd()*1.5):
+                if targetVec[2] > 500:
+                    #print("launching")
+                    agent.setLaunch()
+                    return agent.activeState.update()
 
     #print("returning aerial controls")
     aerial.step(agent.deltaTime)
@@ -2221,14 +2223,17 @@ def aerialSelection(agent, struct):
             acceptable = True
 
     if acceptable:
-
+        ballAngle = correctAngle(math.degrees(angle2(targetVec, enemyGoal) + 90 * -sign(agent.team)))
         if agent.team == 0:
 
             targetLocal = toLocal(targetVec, agent.me)
 
-            totalAngle = math.degrees(math.atan2(targetLocal[1],targetLocal[0]))
+            if targetVec[1] * sign(agent.team) > 3000 * sign(agent.team):
+                totalAngle = abs(math.degrees(math.atan2(targetLocal[1],targetLocal[0])))
+            else:
+                totalAngle = correctAngle(abs(math.degrees(math.atan2(targetLocal[1],targetLocal[0])))+abs(ballAngle))
 
-            if abs(totalAngle) > 60:
+            if abs(totalAngle) > 70:
                 return False
 
         elif agent.team == 1:
@@ -2236,22 +2241,17 @@ def aerialSelection(agent, struct):
             targetLocal = toLocal(targetVec, agent.me)
             totalAngle = math.degrees(math.atan2(targetLocal[1], targetLocal[0]))
 
-            if abs(totalAngle) > 60:
+            if abs(totalAngle) > 70:
                 return False
-
-
-        ballAngle = correctAngle(math.degrees(angle2(targetVec, enemyGoal)+ 90 * -sign(agent.team)))
-        if abs(ballAngle) > 55:
-            return False
 
 
         aerial.arrival_time = struct.game_seconds
         direction = (enemyGoal.flatten() - targetVec.flatten()).normalize()
-        beneathAmount = -35
-        if distance2D(targetVec, enemyGoal) >= 2000:
+        beneathAmount = 15
+        if distance2D(targetVec, enemyGoal) <= 1500 or targetVec[2] > 1500:
             beneathAmount = 0
-        offset = direction.scale(100+beneathAmount)
-        targetVec = targetVec - offset
+        offset = direction.scale(85+beneathAmount)
+        #targetVec = targetVec - offset
 
         targetVec.data[2]-=beneathAmount
 
@@ -2318,18 +2318,18 @@ def findSuitableBallPosition(agent, heightMax, speed, origin):
 
         else:
             if aerialStruct == None:
-                if pred.physics.location.z >= 350:
+                if pred.physics.location.z >= 400:
                     aboveThreshold = True
                     if valid:
                         if agent.me.boostLevel > 0:
                             if aerialSelection(agent, pred):
                                 aerialStruct = pred
-                # else:
-                #     if aboveThreshold:
-                #         valid = False
+                else:
+                    if aboveThreshold:
+                        valid = False
 
 
-    return pred,aerialStruct
+    return agent.ballPred.slices[-1],aerialStruct
 
 
 

@@ -258,13 +258,15 @@ class diabloBot(BaseAgent):
         action = self.activeState.update()
 
         self.renderer.begin_rendering()
-        if self.team == 0:
-            self.renderer.draw_string_2d(100, 100, 1, 1, str(type(self.activeState)), self.renderer.white())
+        #self.renderer.draw_string_2d(100, 100, 1, 1, str(type(self.activeState)), self.renderer.white())
 
         for each in self.renderCalls:
             each.run()
         self.renderer.end_rendering()
         self.renderCalls.clear()
+        if action == None:
+            print(f"{str(type(self.activeState))} failed to produce a controller. Whoops.")
+            action = SimpleControllerState()
 
         return action
 
